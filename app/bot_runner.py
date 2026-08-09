@@ -2,7 +2,7 @@
 import threading
 import time
 import random
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Optional
 
 from telethon import TelegramClient, events, utils as telethon_utils
@@ -21,7 +21,6 @@ from link_builder import (
     build_entity_cache,
 )
 from matcher import analyze_message, get_text
-from code_rules import extract_code_detail
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
 import json as _json
 from telegram_session_lock import SESSION_LOCK
@@ -954,7 +953,7 @@ class BotManager:
                 if code_detail:
                     status += f"；完整码：{code_detail.get('code','')}"
                 if elapsed >= 2:
-                    status += f"；慢转发"
+                    status += "；慢转发"
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": status, "perf": perf, "code": code_detail.get('code','') if code_detail else '', "message_time": perf.get("message_time"), "receive_time": perf.get("receive_time"), "send_time": perf.get("send_time"), "telegram_delay_sec": round(telegram_delay_sec, 3), "internal_total_ms": perf.get("total_ms")})
                 self._record_perf_event(source_name, rule, link, "sent", perf, {"sent_count": len(sent), "failed_count": len(failed)})
                 push_event("success", f"命中并转发：{link}，内部耗时 {elapsed:.2f}s，Telegram延迟 {telegram_delay_sec:.1f}s")

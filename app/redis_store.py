@@ -1,12 +1,10 @@
 ﻿import hashlib
 import json
-import os
-import sys
 import threading
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Any, Iterable
+from typing import Any
 
 import redis
 from config import REDIS_HOST, REDIS_PORT, LISTENER_WORKERS
@@ -132,10 +130,6 @@ def log_line(level: str, message: str, extra: dict | None = None) -> None:
             print(f"[SlowLink] {level}: {message}", flush=True)
         except Exception:
             pass
-
-
-def now_ts() -> int:
-    return int(time.time())
 
 
 def format_time(ts: int | float | None = None) -> str:

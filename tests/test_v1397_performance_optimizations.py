@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import sys
 import types
 import unittest

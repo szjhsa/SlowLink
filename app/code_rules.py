@@ -1,4 +1,3 @@
-import json
 import re
 import time
 from typing import Any
@@ -594,11 +593,6 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
 
 def extract_trigger_code_detail(text: str) -> dict[str, Any]:
     return extract_code_detail(text, trigger_only=True, safe_only=True)
-
-
-def extract_code_identity(text: str) -> str:
-    detail = extract_code_detail(text, trigger_only=False, safe_only=True)
-    return str(detail.get("identity") or "")
 
 
 def code_rule_diagnostics() -> list[dict[str, Any]]:

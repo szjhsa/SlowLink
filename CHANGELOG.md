@@ -2,6 +2,12 @@
 
 本项目遵循语义化版本号。发布更新日志由本文件对应版本章节自动生成。
 
+## [1.39.14] - 2026-08-09
+
+- 清理已确认无引用的死代码：`now_ts`、`extract_code_identity`、`is_usage_notice`、`is_closed_register_notice`、`is_registration_success_notice`、`URL_RE`、`APP_NAME` 和 `_RULE_CACHE["keywords"]`。
+- 移除多个未使用的 import 和无占位符的 f-string；静态检查无未使用告警，全部测试通过。
+- `dedup.py` 和 `web.py` 中仅供测试使用的 fallback 函数保留，因为测试环境实际依赖它们，不算死代码。
+
 ## [1.39.13] - 2026-08-09
 
 - 统计 hash 增加字段上限：规则命中、规则去重、来源命中、来源去重、抽奖碰撞每个统计最多保留高频 500 项，超过后自动裁剪到 400 项，避免 Redis 内存无限增长。

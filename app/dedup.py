@@ -425,7 +425,6 @@ def ttl_minutes_for_profile(profile: dict[str, Any], fallback: int | None = None
 
 # ---- Text normalization ----
 
-URL_RE = re.compile(r"(?:https?://|www\.)\S+|t\.me/\S+", re.I)
 REGISTER_RENEW_SUFFIX_TOKEN_PATTERN = r"[^\s*`]"
 REGISTER_RENEW_SUFFIX_BOUNDARY = (
     r"(?=$|\s|[，。！？？；：、）】]"

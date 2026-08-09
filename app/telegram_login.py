@@ -5,7 +5,7 @@ from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 
 from config import SESSION_PATH
-from redis_store import get, set_value, delete, push_event, r
+from redis_store import get, set_value, delete, push_event
 from telegram_session_lock import SESSION_LOCK
 
 

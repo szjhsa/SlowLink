@@ -15,9 +15,9 @@ except Exception:
     _CSRF_AVAILABLE = False
 
 import telegram_login
-from dedup import build_profile, clear_ttl_cache, list_dedup_recent, release_dedup, ttl_minutes_for_activity, ttl_minutes_for_profile
+from dedup import build_profile, clear_ttl_cache, list_dedup_recent, release_dedup, ttl_minutes_for_profile
 from bot_runner import manager
-from config import WEB_HOST, WEB_PORT, APP_VERSION
+from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
 from matcher import match_rule_details, rule_diagnostics, invalidate_rule_cache
 from code_rules import add_code_rule, code_rule_diagnostics, delete_code_rule, get_code_rules, reset_code_rules, save_code_rules, update_code_rule
@@ -40,7 +40,6 @@ from redis_store import (
     push_event,
     r,
     sadd,
-    scan_keys,
     set_json,
     set_value,
     smembers,

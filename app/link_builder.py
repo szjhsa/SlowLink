@@ -1,5 +1,4 @@
 import re
-from typing import Iterable
 
 from telethon.tl.types import PeerChannel
 

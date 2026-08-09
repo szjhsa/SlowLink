@@ -5,7 +5,7 @@ import regex as _regex
 from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
 
-_RULE_CACHE = {"ts": 0.0, "raw": None, "keywords": [], "regexes": []}
+_RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
 _SLOW_RULE_LOG: dict[str, float] = {}
 
@@ -174,7 +174,7 @@ def _split_rule_blob(blob: str) -> list[str]:
 
 def invalidate_rule_cache():
     _RULE_CACHE.clear()
-    _RULE_CACHE.update({"ts": 0.0, "raw": None, "keywords": [], "regexes": []})
+    _RULE_CACHE.update({"ts": 0.0, "raw": None, "regexes": []})
     _EXCLUDE_TEXT_CACHE.update({"ts": 0.0, "raw": None, "items": []})
 
 
@@ -202,15 +202,11 @@ def _compiled_rules(ttl: float = 60.0):
             except _regex.error:
                 continue
 
-    _RULE_CACHE.update({"ts": now, "raw": raw, "keywords": [], "regexes": regexes})
+    _RULE_CACHE.update({"ts": now, "raw": raw, "regexes": regexes})
     return _RULE_CACHE
 
 
 # ---- usage / closed-register guards (unchanged logic) ----
-
-def is_usage_notice(text: str) -> bool:
-    return _is_usage_notice(normalize_text(text), compact_text(text))
-
 
 def _is_usage_notice(normalized: str, compact: str) -> bool:
     low = normalized.lower()
@@ -245,10 +241,6 @@ def _is_usage_notice(normalized: str, compact: str) -> bool:
     return False
 
 
-def is_closed_register_notice(text: str) -> bool:
-    return _is_closed_register_notice(normalize_text(text), compact_text(text))
-
-
 def _explicit_registration_status(normalized: str) -> str:
     match = REGISTRATION_STATUS_RE.search(normalized)
     if not match:
@@ -272,10 +264,6 @@ def _is_closed_register_notice(normalized: str, compact: str) -> bool:
         return False
 
     return bool(CLOSED_REGISTER_RE.search(normalized) or CLOSED_REGISTER_RE.search(compact))
-
-
-def is_registration_success_notice(text: str) -> bool:
-    return _is_registration_success_notice(normalize_text(text), compact_text(text))
 
 
 def _is_registration_success_notice(normalized: str, compact: str) -> bool:

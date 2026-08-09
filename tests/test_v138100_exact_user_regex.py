@@ -30,7 +30,6 @@ class ExactUserRegexV138100Tests(unittest.TestCase):
         compiled = matcher._compiled_rules(ttl=0)
         result = matcher.match_rule_details(LOTTERY_TEXT)
 
-        self.assertEqual(compiled["keywords"], [])
         self.assertEqual([raw for raw, _compiled in compiled["regexes"]], [rule])
         self.assertTrue(result["matched"])
         self.assertEqual(result["rule"], rule)
