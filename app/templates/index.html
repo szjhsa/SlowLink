@@ -352,6 +352,7 @@ let pollTimer = null;
 let stateAbort = null;
 let stateRequestSeq = 0;
 const POLL_INTERVAL_MS = 5000;
+const CSRF_TOKEN = "{{ csrf_token() }}";
 
 function isPageHidden(){
   return document.hidden || document.visibilityState === 'hidden';
@@ -679,6 +680,13 @@ function bindAjaxForms(){
   document.querySelectorAll('form[data-ajax="1"]').forEach(form => {
     if(form.dataset.bound === '1') return;
     form.dataset.bound = '1';
+    if(!form.querySelector('input[name="csrf_token"]')){
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'csrf_token';
+      input.value = CSRF_TOKEN;
+      form.appendChild(input);
+    }
     form.addEventListener('submit', async function(e){
       e.preventDefault();
       if(form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;

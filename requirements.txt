@@ -3,4 +3,5 @@ flask==3.0.3
 redis==5.0.8
 waitress==3.0.2
 regex==2026.7.19
+Flask-WTF==1.2.2
 

@@ -8,6 +8,12 @@ import time
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
 
+try:
+    from flask_wtf import CSRFProtect
+    _CSRF_AVAILABLE = True
+except Exception:
+    _CSRF_AVAILABLE = False
+
 import telegram_login
 from dedup import build_profile, clear_ttl_cache, list_dedup_recent, release_dedup, ttl_minutes_for_activity, ttl_minutes_for_profile
 from bot_runner import manager
@@ -65,6 +71,12 @@ except Exception:
 app = Flask(__name__)
 app.secret_key = get("web_secret") or secrets.token_hex(32)
 set_value("web_secret", app.secret_key)
+csrf = CSRFProtect(app) if _CSRF_AVAILABLE else None
+if not _CSRF_AVAILABLE:
+    try:
+        log_line("warning", "CSRF 防护未启用：Flask-WTF 不可用")
+    except Exception:
+        pass
 ensure_defaults()
 trim_runtime_lists()
 log_line("info", f"SlowLink {APP_VERSION} 启动")

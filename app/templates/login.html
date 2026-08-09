@@ -4,6 +4,7 @@
   <h2>登录后台</h2>
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input name="password" type="password" placeholder="后台密码" required>
     <button type="submit">登录</button>
   </form>

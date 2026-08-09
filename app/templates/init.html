@@ -4,6 +4,7 @@
   <h2>首次初始化</h2>
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input name="password" type="password" placeholder="设置后台密码，至少 6 位" required>
     <input name="password2" type="password" placeholder="再次输入后台密码" required>
     <button type="submit">创建后台密码</button>

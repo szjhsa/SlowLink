@@ -27,6 +27,43 @@ _BATCH_FLUSHING = False
 _BATCH_THREAD_STARTED = False
 _BATCH_MAX_BUFFER = 1000
 _BATCH_FLUSH_INTERVAL = 0.5
+STATS_HASH_KEYS = (
+    "stats:rule_hits",
+    "stats:rule_duplicates",
+    "stats:source_hits",
+    "stats:source_duplicates",
+    "stats:lottery_collisions",
+)
+STATS_HASH_MAX_FIELDS = 500
+STATS_HASH_PRUNE_WATERMARK = 400
+STATS_HASH_PRUNE_INTERVAL_SECONDS = 300.0
+DAILY_STATS_RETENTION_DAYS = 30
+DAILY_STATS_PRUNE_INTERVAL_SECONDS = 3600.0
+_STATS_PRUNE_LAST_TS = 0.0
+_DAILY_STATS_PRUNE_LAST_TS = 0.0
+_PRUNE_STATS_SCRIPT = """
+local fields = redis.call('HGETALL', KEYS[1])
+local count = #fields / 2
+local max_fields = tonumber(ARGV[1])
+if count <= max_fields then return 0 end
+local entries = {}
+for i = 1, #fields, 2 do
+  entries[#entries + 1] = { fields[i], tonumber(fields[i + 1]) or 0 }
+end
+table.sort(entries, function(a, b)
+  if a[2] ~= b[2] then return a[2] < b[2] end
+  return a[1] < b[1]
+end)
+local remove = {}
+local keep = tonumber(ARGV[2])
+for i = 1, count - keep do
+  remove[#remove + 1] = entries[i][1]
+end
+if #remove > 0 then
+  redis.call('HDEL', KEYS[1], unpack(remove))
+end
+return #remove
+"""
 
 LEGACY_PURE_CODE_TRIGGER_RULE = r"^(?!.*码使用)[^-]+-\d+-(?:Register|Renew)_.+$"
 LEGACY_SAFE_PURE_CODE_TRIGGER_RULE = (
@@ -188,6 +225,11 @@ def _batch_flush_loop() -> None:
     while True:
         time.sleep(_BATCH_FLUSH_INTERVAL)
         flush_batch_records()
+        try:
+            prune_stats_hashes()
+            prune_daily_stats()
+        except Exception:
+            pass
 
 
 def _daily_stat_key() -> str:
@@ -388,6 +430,55 @@ def daily_stats() -> dict[str, int]:
         return {str(k): int(v or 0) for k, v in (raw or {}).items()}
     except Exception:
         return {}
+
+
+def prune_stats_hashes(force: bool = False) -> int:
+    global _STATS_PRUNE_LAST_TS
+    now = time.monotonic()
+    if not force and now - _STATS_PRUNE_LAST_TS < STATS_HASH_PRUNE_INTERVAL_SECONDS:
+        return 0
+    _STATS_PRUNE_LAST_TS = now
+    removed = 0
+    for key in STATS_HASH_KEYS:
+        try:
+            removed += int(r.eval(
+                _PRUNE_STATS_SCRIPT,
+                1,
+                key,
+                STATS_HASH_MAX_FIELDS,
+                STATS_HASH_PRUNE_WATERMARK,
+            ) or 0)
+        except Exception:
+            continue
+    return removed
+
+
+def prune_daily_stats(force: bool = False) -> int:
+    global _DAILY_STATS_PRUNE_LAST_TS
+    now = time.monotonic()
+    if not force and now - _DAILY_STATS_PRUNE_LAST_TS < DAILY_STATS_PRUNE_INTERVAL_SECONDS:
+        return 0
+    _DAILY_STATS_PRUNE_LAST_TS = now
+    removed = 0
+    try:
+        tz_name = str(_TIMEZONE_CACHE.get("value") or "Asia/Shanghai")
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("Asia/Shanghai")
+    today = datetime.now(tz).date()
+    try:
+        for key in r.scan_iter(match="daily_stats:*", count=200):
+            date_part = str(key).split(":", 1)[-1]
+            try:
+                day = datetime.strptime(date_part, "%Y-%m-%d").date()
+            except Exception:
+                continue
+            if (today - day).days > DAILY_STATS_RETENTION_DAYS:
+                r.delete(key)
+                removed += 1
+    except Exception:
+        pass
+    return removed
 
 
 def _top_hash(key: str, limit: int) -> list[dict]:
