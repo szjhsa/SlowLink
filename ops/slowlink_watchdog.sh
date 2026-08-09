@@ -3,8 +3,8 @@ set -eu
 
 APP_CONTAINER="${APP_CONTAINER:-slowlink_app}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-slowlink_redis}"
-CHECK_INTERVAL="${CHECK_INTERVAL:-20}"
-CPU_THRESHOLD="${CPU_THRESHOLD:-90}"
+CHECK_INTERVAL="${CHECK_INTERVAL:-10}"
+CPU_THRESHOLD="${CPU_THRESHOLD:-80}"
 HIGH_COUNT_LIMIT="${HIGH_COUNT_LIMIT:-4}"
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-600}"
 LOG_FILE="${LOG_FILE:-/opt/slowlink/watchdog.log}"
@@ -144,7 +144,7 @@ capture_python_state() {
 
 snapshot() {
   log "snapshot: load=$(cut -d ' ' -f1-3 /proc/loadavg 2>/dev/null || true)"
-  docker stats --no-stream "$APP_CONTAINER" >> "$LOG_FILE" 2>/dev/null || true
+  docker stats --no-stream "$APP_CONTAINER" "$REDIS_CONTAINER" >> "$LOG_FILE" 2>/dev/null || true
   ps -eo pid,tid,ppid,comm,%cpu,%mem,etime --sort=-%cpu | head -20 >> "$LOG_FILE" 2>/dev/null || true
 }
 
@@ -164,6 +164,7 @@ while true; do
     high_count=$((high_count + 1))
     log "high CPU: ${cpu}% (${high_count}/${HIGH_COUNT_LIMIT})"
     if [ "$high_count" -eq 1 ]; then
+      snapshot
       capture_python_state "first high CPU sample"
     fi
   else

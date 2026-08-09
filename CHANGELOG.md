@@ -2,6 +2,12 @@
 
 本项目遵循语义化版本号。发布更新日志由本文件对应版本章节自动生成。
 
+## [1.39.15] - 2026-08-09
+
+- CPU watchdog 阈值从 90% 降到 80%，采样间隔从 20 秒缩短到 10 秒，高 CPU 能被更早发现。
+- 快照同时记录 `slowlink_app` 和 `slowlink_redis` 两个容器的资源占用，并保留宿主机 Top 20 CPU 进程，用于确认峰值来自应用、Redis 还是宿主机其他进程。
+- 首次连续高 CPU 采样时就先写一次宿主/容器快照，再抓 Python 堆栈和线程 CPU，重启前已留有现场。
+
 ## [1.39.14] - 2026-08-09
 
 - 清理已确认无引用的死代码：`now_ts`、`extract_code_identity`、`is_usage_notice`、`is_closed_register_notice`、`is_registration_success_notice`、`URL_RE`、`APP_NAME` 和 `_RULE_CACHE["keywords"]`。

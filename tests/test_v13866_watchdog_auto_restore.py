@@ -41,13 +41,18 @@ class WatchdogAutoRestoreV13866Tests(unittest.TestCase):
         service = read(OPS / "slowlink-watchdog.service")
 
         self.assertIn('APP_CONTAINER="${APP_CONTAINER:-slowlink_app}"', script)
-        self.assertIn('CPU_THRESHOLD="${CPU_THRESHOLD:-90}"', script)
+        self.assertIn('CHECK_INTERVAL="${CHECK_INTERVAL:-10}"', script)
+        self.assertIn('CPU_THRESHOLD="${CPU_THRESHOLD:-80}"', script)
         self.assertIn('HIGH_COUNT_LIMIT="${HIGH_COUNT_LIMIT:-4}"', script)
         self.assertIn('COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-600}"', script)
         self.assertIn("docker stats --no-stream", script)
+        self.assertIn('docker stats --no-stream "$APP_CONTAINER" "$REDIS_CONTAINER"', script)
+        self.assertIn('ps -eo pid,tid,ppid,comm,%cpu,%mem,etime --sort=-%cpu', script)
         self.assertIn('docker restart "$APP_CONTAINER"', script)
         self.assertIn("snapshot", script)
         self.assertIn("ExecStart=/bin/sh /opt/slowlink/ops/slowlink_watchdog.sh", service)
+        self.assertIn("Environment=CHECK_INTERVAL=10", service)
+        self.assertIn("Environment=CPU_THRESHOLD=80", service)
         self.assertIn("Restart=always", service)
 
 

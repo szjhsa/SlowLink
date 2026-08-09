@@ -9,4 +9,4 @@ LISTENER_WORKERS = int(os.getenv("LISTENER_WORKERS", "2"))
 LOG_VERBOSE = os.getenv("LOG_VERBOSE", "0") == "1"
 SESSION_PATH = os.getenv("SESSION_PATH", "/app/sessions/slowlink")
 
-APP_VERSION = "1.39.14"
+APP_VERSION = "1.39.15"
