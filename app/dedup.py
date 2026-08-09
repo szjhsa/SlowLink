@@ -270,11 +270,13 @@ def _normalize_scratch_prize_value(value: str) -> str:
     # Drop a descriptive prefix before a leading numeric prize, while keeping
     # signed coin prizes and code-like hyphenated values intact.
     first_digit = re.search(r"\d", prize)
+    suffix_after_digit = prize[first_digit.start():] if first_digit else ""
     if (
         first_digit
         and first_digit.start() > 0
         and not prize.startswith(("+", "-"))
         and not re.search(r"[-_]", prize[:first_digit.start()])
+        and re.search(r"币|元代金券|元|积分|点券|钻石|券", suffix_after_digit)
     ):
         prize = prize[first_digit.start():]
     return f"{prize}x{quantity}"
@@ -287,6 +289,12 @@ def _extract_scratch_prizes(raw: str) -> list[str]:
         for prize in prizes
     }
     return sorted(prize for prize in normalized if prize)
+
+
+def _scratch_prize_base(value: str) -> str:
+    prize = re.sub(r"x\d+$", "", value or "")
+    prize = re.sub(r"\d+\s*(?:个|份|张|枚|条|次|位|组)?$", "", prize)
+    return re.sub(r"\s+", "", prize).strip()
 
 
 def extract_lottery_template_identity(text: str, message_link: str = "", source: str = "") -> str:
@@ -346,6 +354,15 @@ def extract_lottery_global_identity(text: str) -> str:
     ordering so crosspost variants still correlate within the 10-minute window.
     """
     raw = unicodedata.normalize("NFKC", text or "")
+    if "刮刮乐" in raw:
+        prizes = _extract_scratch_prizes(raw)
+        bases = sorted({
+            _scratch_prize_base(prize)
+            for prize in prizes
+            if _scratch_prize_base(prize)
+        })
+        if bases:
+            return f"global-lottery:mode:刮刮乐|prizes:{'|'.join(bases)}"
     title = _extract_lottery_title(raw)
     if not title:
         return ""

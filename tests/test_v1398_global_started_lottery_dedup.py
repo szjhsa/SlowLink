@@ -49,6 +49,31 @@ SECOND_POST = """瞬影公费新服上线
 FULL_FIRST = FIRST_POST + "\n🔑 口令：LOTTERYKEY\n📑 活动详情：详情A"
 FULL_SECOND = SECOND_POST + "\n🔑 口令：NEWKEY\n📑 活动详情：详情B"
 
+SCRATCH_START = """码子
+
+🎁 抽奖活动已开始！
+━━━━━━━━━━━━━━
+
+🎰 开奖模式：刮刮乐
+
+🎁 奖品：
+  ▸ 码子 5 个 x5
+
+📣 发布群组：
+  ▸ 取经阁
+
+🔑 口令：注意身体
+📑 活动详情：5 个
+"""
+
+SCRATCH_COMPACT = """🎁 抽奖开始啦
+
+详情
+方式：刮刮乐
+奖品：码子
+现在可以参与这场抽奖啦，祝你好运！
+"""
+
 
 class GlobalStartedLotteryDedupV1398Tests(unittest.TestCase):
     def test_group_order_change_keeps_one_global_lottery_identity(self):
@@ -110,6 +135,26 @@ class GlobalStartedLotteryDedupV1398Tests(unittest.TestCase):
         )
         second_duplicate, reason, _profile = dedup.check_and_mark(
             FULL_SECOND, "https://t.me/ShardCatDen/661300", None, "strict", "碎片谷雨小窝"
+        )
+
+        self.assertFalse(first_duplicate)
+        self.assertTrue(second_duplicate)
+        self.assertIn("同一抽奖的不同模板", reason)
+
+    def test_scratch_without_time_anchor_still_gets_global_identity(self):
+        dedup, _client = load_dedup()
+
+        first_global = dedup.build_profile(SCRATCH_START)["lottery_global_identity"]
+        second_global = dedup.build_profile(SCRATCH_COMPACT)["lottery_global_identity"]
+
+        self.assertTrue(first_global)
+        self.assertEqual(first_global, second_global)
+
+        first_duplicate, _reason, _profile = dedup.check_and_mark(
+            SCRATCH_START, "https://t.me/qujinge/6747", None, "strict", "取经阁"
+        )
+        second_duplicate, reason, _profile = dedup.check_and_mark(
+            SCRATCH_COMPACT, "https://t.me/qujinge/6748", None, "strict", "取经阁"
         )
 
         self.assertFalse(first_duplicate)

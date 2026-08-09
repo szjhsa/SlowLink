@@ -44,7 +44,7 @@ trap 'exit 143' TERM
 
 usage() {
   cat <<'EOF'
-用法：sudo sh install.sh [--version 1.39.10] [--domain DOMAIN | --http] [--port 8080] [--update]
+用法：sudo sh install.sh [--version 1.39.11] [--domain DOMAIN | --http] [--port 8080] [--update]
 
   --version VERSION  安装指定 GitHub Release
   --domain DOMAIN    使用域名 HTTPS，例如 slowlink.example.com
