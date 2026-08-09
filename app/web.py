@@ -44,6 +44,24 @@ from redis_store import (
     clear_stats_cache,
 )
 
+try:
+    from redis_store import clear_collisions as _clear_collisions
+    from redis_store import dedup_stats as _dedup_stats
+    from redis_store import list_collisions as _list_collisions
+    from redis_store import mark_collision_distinct as _mark_collision_distinct
+except Exception:
+    def _clear_collisions() -> None:
+        pass
+
+    def _dedup_stats() -> dict:
+        return {}
+
+    def _list_collisions(_limit: int = 30) -> list:
+        return []
+
+    def _mark_collision_distinct(_identity: str, _dedup_id: str) -> bool:
+        return False
+
 app = Flask(__name__)
 app.secret_key = get("web_secret") or secrets.token_hex(32)
 set_value("web_secret", app.secret_key)
@@ -316,6 +334,8 @@ def _state_payload(light: bool = False) -> dict:
         "cache_stats": cache_stats(),
         "heartbeat": _heartbeat_payload(),
         "daily_stats": _daily_stats_safe(),
+        "dedup_stats": _dedup_stats(),
+        "collisions": _list_collisions(30),
     }
     if not light:
         data["dialog_cache"] = dialogs
@@ -1015,6 +1035,38 @@ def api_health_summary():
         "flow_stats": get_json("listener_flow_stats", {}) or {},
         "cache_stats": cache_stats(),
     })
+
+
+@app.get("/api/dedup_stats")
+def api_dedup_stats():
+    gate = require_login()
+    if gate:
+        return jsonify({"ok": False, "message": "未登录"}), 401
+    return jsonify({"ok": True, "dedup_stats": _dedup_stats(), "collisions": _list_collisions(30)})
+
+
+@app.post("/clear_collisions")
+def clear_collisions_route():
+    gate = require_login()
+    if gate:
+        return gate
+    _clear_collisions()
+    return done("抽奖碰撞记录已清空", "success")
+
+
+@app.post("/mark_collision_distinct")
+def mark_collision_distinct_route():
+    gate = require_login()
+    if gate:
+        return gate
+    identity = request.form.get("identity", "").strip()
+    dedup_id = request.form.get("dedup_id", "").strip()
+    if not identity or not dedup_id:
+        return done("缺少碰撞身份或去重 ID", "error", ok=False)
+    if _mark_collision_distinct(identity, dedup_id):
+        push_event("warning", f"已标记为不同抽奖：{identity[:120]}")
+        return done("已标记，该文本后续不再被此抽奖身份拦截", "success")
+    return done("标记失败", "error", ok=False)
 
 
 @app.get("/export_config")

@@ -20,6 +20,7 @@ _BATCH_BUFFER: dict[str, list] = {
     "fails": [],
     "perf_events": [],
     "daily": [],
+    "counters": [],
 }
 _BATCH_LOCK = threading.Lock()
 _BATCH_FLUSHING = False
@@ -226,6 +227,18 @@ def _enqueue_record(key: str, raw: str, limit: int) -> None:
         flush_batch_records()
 
 
+def _enqueue_counter(hash_key: str, field: str) -> None:
+    with _BATCH_LOCK:
+        items = _BATCH_BUFFER.setdefault("counters", [])
+        items.append((str(hash_key), str(field)))
+        size = len(items)
+        if len(items) > _BATCH_MAX_BUFFER:
+            del items[: len(items) - _BATCH_MAX_BUFFER]
+    _ensure_batch_thread()
+    if size >= 50:
+        flush_batch_records()
+
+
 def _write_records_now(key: str, records: list[tuple[str, int]]) -> None:
     if not records:
         return
@@ -254,13 +267,15 @@ def flush_batch_records() -> None:
             return
         try:
             pipe = r.pipeline()
-            for key in ("events", "hits", "fails", "perf_events"):
+            for key in ("events", "hits", "fails", "perf_events", "collisions"):
                 for raw, limit in pending.get(key) or []:
                     pipe.lpush(key, raw)
                     pipe.ltrim(key, 0, limit - 1)
             daily_key = _daily_stat_key()
             for category in pending.get("daily") or []:
                 pipe.hincrby(daily_key, str(category), 1)
+            for hash_key, field in pending.get("counters") or []:
+                pipe.hincrby(hash_key, str(field), 1)
             pipe.execute()
         except Exception:
             with _BATCH_LOCK:
@@ -316,7 +331,18 @@ def add_hit(item: dict, limit: int = 300) -> None:
     item = dict(item)
     item.setdefault("time", format_time())
     _enqueue_record("hits", json.dumps(item, ensure_ascii=False), limit)
-    _enqueue_record("daily", _hit_category(item.get("status")), 0)
+    category = _hit_category(item.get("status"))
+    _enqueue_record("daily", category, 0)
+    rule = str(item.get("rule") or "").strip()
+    source = str(item.get("source") or "").strip()
+    if rule:
+        _enqueue_counter("stats:rule_hits", rule[:200])
+        if category == "duplicate":
+            _enqueue_counter("stats:rule_duplicates", rule[:200])
+    if source:
+        _enqueue_counter("stats:source_hits", source[:120])
+        if category == "duplicate":
+            _enqueue_counter("stats:source_duplicates", source[:120])
 
 
 def list_hits(limit: int = 50) -> list[dict]:
@@ -362,6 +388,98 @@ def daily_stats() -> dict[str, int]:
         return {str(k): int(v or 0) for k, v in (raw or {}).items()}
     except Exception:
         return {}
+
+
+def _top_hash(key: str, limit: int) -> list[dict]:
+    try:
+        raw = r.hgetall(key)
+        items = [{"key": str(k), "count": int(v or 0)} for k, v in (raw or {}).items()]
+        return sorted(items, key=lambda item: item["count"], reverse=True)[:limit]
+    except Exception:
+        return []
+
+
+def dedup_stats(limit: int = 20) -> dict:
+    flush_batch_records()
+    return {
+        "rule_hits": _top_hash("stats:rule_hits", limit),
+        "rule_duplicates": _top_hash("stats:rule_duplicates", limit),
+        "source_hits": _top_hash("stats:source_hits", limit),
+        "source_duplicates": _top_hash("stats:source_duplicates", limit),
+        "lottery_collisions": _top_hash("stats:lottery_collisions", limit),
+    }
+
+
+COLLISION_LIST = "dedup:collisions"
+
+
+def add_lottery_collision(item: dict, limit: int = 200) -> None:
+    item = dict(item)
+    item.setdefault("time", format_time())
+    _enqueue_record("collisions", json.dumps(item, ensure_ascii=False), limit)
+    _enqueue_counter(
+        "stats:lottery_collisions",
+        str(item.get("identity") or "")[:200],
+    )
+
+
+def list_collisions(limit: int = 30) -> list[dict]:
+    flush_batch_records()
+    out = []
+    for raw in r.lrange(COLLISION_LIST, 0, limit - 1):
+        try:
+            out.append(json.loads(raw))
+        except Exception:
+            pass
+    return out
+
+
+def clear_collisions() -> None:
+    try:
+        r.delete(COLLISION_LIST)
+    except Exception:
+        pass
+
+
+def is_collision_exempt(identity: str, dedup_id: str) -> bool:
+    if not identity or not dedup_id:
+        return False
+    try:
+        return bool(r.sismember("dedup:collision_exempt:" + sha(identity), str(dedup_id)))
+    except Exception:
+        return False
+
+
+def mark_collision_distinct(identity: str, dedup_id: str) -> bool:
+    if not identity or not dedup_id:
+        return False
+    key = "dedup:collision_exempt:" + sha(identity)
+    try:
+        r.sadd(key, str(dedup_id))
+        r.expire(key, 7 * 24 * 60 * 60)
+    except Exception:
+        return False
+    try:
+        items = r.lrange(COLLISION_LIST, 0, -1)
+        kept = []
+        for raw in items:
+            try:
+                item = json.loads(raw)
+            except Exception:
+                kept.append(raw)
+                continue
+            if (
+                str(item.get("dedup_id") or "") == str(dedup_id)
+                and str(item.get("identity") or "") == str(identity)
+            ):
+                continue
+            kept.append(raw)
+        r.delete(COLLISION_LIST)
+        if kept:
+            r.rpush(COLLISION_LIST, *kept)
+    except Exception:
+        pass
+    return True
 
 
 def sha(text: str) -> str:

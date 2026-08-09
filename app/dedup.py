@@ -9,6 +9,24 @@ from invite_path_codes import extract_invite_path_codes
 from redis_store import r, sha, format_time
 from telegram_start_links import extract_telegram_start_register_renew_codes
 
+try:
+    from redis_store import add_lottery_collision as _add_lottery_collision
+    from redis_store import is_collision_exempt as _is_collision_exempt
+except (ImportError, AttributeError):
+    def _add_lottery_collision(item: dict) -> None:
+        try:
+            import json as _json
+            r.lpush("dedup:collisions", _json.dumps(item, ensure_ascii=False))
+            r.ltrim("dedup:collisions", 0, 199)
+        except Exception:
+            pass
+
+    def _is_collision_exempt(identity: str, dedup_id: str) -> bool:
+        try:
+            return bool(r.sismember("dedup:collision_exempt:" + sha(identity), str(dedup_id)))
+        except Exception:
+            return False
+
 # ---- Text normalization for dedup ----
 
 EMOJI_RE = re.compile(
@@ -596,9 +614,14 @@ def check_and_mark(
             if identity and identity not in seen_identities:
                 seen_identities.add(identity)
                 template_identities.append(identity)
+    effective_template_identities = [
+        identity
+        for identity in template_identities
+        if not _is_collision_exempt(identity, profile["dedup_id"])
+    ]
     template_keys = [
         "dedup:lottery-template:" + sha(identity)
-        for identity in template_identities
+        for identity in effective_template_identities
     ]
 
     real_ttl_minutes = ttl_minutes_for_profile(profile, ttl_minutes) if ttl_minutes is None else int(ttl_minutes)
@@ -637,7 +660,7 @@ def check_and_mark(
         return True, reason, profile
 
     template_new: list[bool] = []
-    for template_key in template_keys:
+    for template_index, template_key in enumerate(template_keys):
         template_is_new = results[result_index]
         result_index += 1
         template_new.append(template_is_new)
@@ -650,6 +673,13 @@ def check_and_mark(
             )
             if not explicit_id_conflict:
                 reason = "同一抽奖的不同模板重复（10分钟内）"
+                _add_lottery_collision({
+                    "identity": effective_template_identities[template_index],
+                    "dedup_id": profile["dedup_id"],
+                    "first_dedup_id": existing_id,
+                    "source": source or "",
+                    "link": message_link or profile.get("message_link", ""),
+                })
                 _record_duplicate(existing_id, profile, reason, source, message_link, ttl_seconds)
                 return True, reason, profile
 

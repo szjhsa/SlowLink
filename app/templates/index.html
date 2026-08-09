@@ -324,6 +324,7 @@
   <div class="tab-nav compact-tabs">
     <button type="button" class="tab-btn active" data-tab="hits">命中记录</button>
     <button type="button" class="tab-btn" data-tab="dedups">去重记录</button>
+    <button type="button" class="tab-btn" data-tab="stats">去重统计</button>
     <button type="button" class="tab-btn" data-tab="fails">失败记录</button>
     <button type="button" class="tab-btn" data-tab="perf">性能诊断</button>
     <button type="button" class="tab-btn" data-tab="events">系统事件</button>
@@ -331,6 +332,7 @@
   <div class="tab-content">
     <div class="tab-panel active" data-panel="hits"><div class="panel-headline"><b>命中记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="hits"><button class="small secondary">清空命中记录</button></form></div><div class="logbox big-logbox" id="hitsBox"></div></div>
     <div class="tab-panel" data-panel="dedups"><div class="panel-headline"><span><b>去重记录</b><em>只清页面记录，不影响真正的防重复缓存。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="dedup_recent"><button class="small secondary">清空去重记录</button></form></div><p class="hint">点“解除去重”后，同活动下一次命中可重新转发。</p><div class="logbox big-logbox" id="dedupBox"></div></div>
+    <div class="tab-panel" data-panel="stats"><div class="panel-headline"><span><b>去重统计与碰撞反馈</b><em>误挡时可标记为不同抽奖。</em></span><form action="/clear_collisions" method="post" data-ajax="1"><button class="small secondary">清空碰撞记录</button></form></div><div class="logbox big-logbox" id="dedupStatsBox"></div><div class="logbox big-logbox" id="collisionBox"></div></div>
     <div class="tab-panel" data-panel="fails"><div class="panel-headline"><b>失败 / 慢转发记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="fails"><button class="small secondary">清空失败记录</button></form></div><div class="logbox big-logbox" id="failsBox"></div></div>
     <div class="tab-panel" data-panel="perf"><div class="panel-headline"><span><b>性能诊断</b><em>只记录命中后的关键耗时，不记录未命中消息。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="perf_events"><button class="small secondary">清空性能诊断</button></form></div><div class="logbox big-logbox" id="perfBox"></div></div>
     <div class="tab-panel" data-panel="events"><div class="panel-headline"><b>系统事件</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="events"><button class="small secondary">清空系统事件</button></form></div><div class="logbox big-logbox" id="eventsBox"></div></div>
@@ -597,6 +599,8 @@ function renderLogs(data){
   const hasFails = Object.prototype.hasOwnProperty.call(data, 'fails');
   const hasEvents = Object.prototype.hasOwnProperty.call(data, 'events');
   const hasDedups = Object.prototype.hasOwnProperty.call(data, 'dedup_recent');
+  const hasStats = Object.prototype.hasOwnProperty.call(data, 'dedup_stats');
+  const hasCollisions = Object.prototype.hasOwnProperty.call(data, 'collisions');
   const hasPerfEvents = Object.prototype.hasOwnProperty.call(data, 'perf_events');
   const hits = data.hits || [], fails = data.fails || [], events = data.events || [], dedups = data.dedup_recent || [];
   const perfEvents = data.perf_events || [];
@@ -617,6 +621,12 @@ function renderLogs(data){
   if(hasDedups){
     document.getElementById('dedupBox').innerHTML = dedups.length ? dedups.map(d => `<div class="log"><b>${esc(d.time)}</b> | ${esc(d.action)} | ${esc(d.activity)} | ${esc(d.reason)}${d.first_source?'<br>首次来源：'+esc(d.first_source):''}${d.source?'<br>本次来源：'+esc(d.source):''}${d.duplicate_count?'<br>重复次数：'+esc(d.duplicate_count):''}${d.duplicate_sources?'<br>重复来源：'+esc(d.duplicate_sources.join('，')):''}${d.ttl_left?'<br>剩余：'+esc(d.ttl_left)+' 秒':''}${d.core?'<br><span class="muted">'+esc(d.core)+'</span>':''}${d.link?'<br><a href="'+esc(d.link)+'" target="_blank">'+esc(d.link)+'</a>':''}${d.active?`<form action="/release_dedup" method="post" data-ajax="1" style="margin-top:8px;"><input type="hidden" name="dedup_id" value="${esc(d.dedup_id)}"><button class="small warning">解除去重</button></form>`:''}</div>`).join('') : '<div class="empty">暂无去重记录</div>';
   }
+  if(hasStats){
+    renderDedupStats(data.dedup_stats || {});
+  }
+  if(hasCollisions){
+    renderCollisions(data.collisions || []);
+  }
   const perfBox = document.getElementById('perfBox');
   if(hasPerfEvents && perfBox){
     const resultText = {sent:'已转发', duplicate:'重复跳过', duplicate_code:'邀请码重复', send_failed:'发送失败'};
@@ -630,6 +640,25 @@ function renderLogs(data){
     }).join('') : '<div class="empty">暂无性能诊断</div>';
   }
   bindAjaxForms();
+}
+function renderDedupStats(stats){
+  const box = document.getElementById('dedupStatsBox');
+  if(!box) return;
+  const groups = [
+    ['规则命中 TOP', stats.rule_hits || []],
+    ['规则去重 TOP', stats.rule_duplicates || []],
+    ['来源去重 TOP', stats.source_duplicates || []],
+    ['抽奖身份碰撞 TOP', stats.lottery_collisions || []],
+  ];
+  box.innerHTML = groups.map(([title, rows]) => {
+    if(!rows || !rows.length) return `<div class="stats-block"><b>${esc(title)}</b><div class="empty">暂无数据</div></div>`;
+    return `<div class="stats-block"><b>${esc(title)}</b>${rows.map((r,i) => `<div class="log compact"><span class="muted">${i+1}.</span> ${esc(r.key)} <b>×${esc(r.count)}</b></div>`).join('')}</div>`;
+  }).join('');
+}
+function renderCollisions(collisions){
+  const box = document.getElementById('collisionBox');
+  if(!box) return;
+  box.innerHTML = collisions.length ? collisions.map(c => `<div class="log"><b>${esc(c.time)}</b> | 被全局抽奖身份拦截 | 本次来源：${esc(c.source || '-')}${c.link?'<br><a href="'+esc(c.link)+'" target="_blank">'+esc(c.link)+'</a>':''}<br><span class="muted">身份：<code>${esc(c.identity || '-')}</code></span><form action="/mark_collision_distinct" method="post" data-ajax="1" style="margin-top:8px;"><input type="hidden" name="identity" value="${esc(c.identity || '')}"><input type="hidden" name="dedup_id" value="${esc(c.dedup_id || '')}"><button class="small warning">标记为不同抽奖</button></form></div>`).join('') : '<div class="empty">暂无抽奖碰撞记录</div>';
 }
 function renderRegexResult(r){
   if(!r) return;
