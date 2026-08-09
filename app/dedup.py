@@ -321,6 +321,30 @@ def extract_lottery_template_identity(text: str, message_link: str = "", source:
     return ""
 
 
+def extract_lottery_global_identity(text: str) -> str:
+    """Broad global lottery identity based on stable public fields.
+
+    Unlike template identities, this ignores passphrase/details/publish group
+    ordering so crosspost variants still correlate within the 10-minute window.
+    """
+    raw = unicodedata.normalize("NFKC", text or "")
+    title = _extract_lottery_title(raw)
+    if not title:
+        return ""
+    anchor = (
+        _extract_lottery_line_value(raw, ("定时开奖", "开奖时间"))
+        or _extract_lottery_line_value(raw, ("截止时间",))
+    )
+    if not anchor:
+        return ""
+    prizes = _extract_lottery_section_values(raw, ("奖品", "奖品内容"))
+    if not prizes:
+        return ""
+    return (
+        f"global-lottery:title:{title}|anchor:{anchor}|prizes:{'|'.join(prizes)}"
+    )
+
+
 def ttl_minutes_for_activity(activity: str, fallback: int | None = None) -> int:
     defaults = {
         "register": 20,
@@ -512,6 +536,11 @@ def build_profile(text: str, message_link: str = "", source: str = "") -> dict[s
     normalized = normalize_for_text_dedup(text)
     text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     lottery_identity = extract_lottery_identity(text) if activity in {"lottery", "joint_lottery"} else ""
+    lottery_global_identity = (
+        extract_lottery_global_identity(text)
+        if activity in {"lottery", "joint_lottery"} and not lottery_identity
+        else ""
+    )
     lottery_template_identity = (
         extract_lottery_template_identity(text, message_link, source)
         if activity in {"lottery", "joint_lottery"}
@@ -533,6 +562,7 @@ def build_profile(text: str, message_link: str = "", source: str = "") -> dict[s
         "message_link": message_link,
         "text_hash": text_hash,
         "lottery_identity": lottery_identity,
+        "lottery_global_identity": lottery_global_identity,
         "lottery_template_identity": lottery_template_identity,
         "lottery_mode": "id" if lottery_identity else "",
         "dedup_strategy": dedup_strategy,
@@ -556,10 +586,20 @@ def check_and_mark(
     profile = build_profile(text, message_link, source)
     content_key = "dedup:" + profile["dedup_id"]
     link_key = "dedup:link:" + sha(message_link) if message_link else ""
-    template_identity = profile.get("lottery_template_identity") or ""
-    if template_identity and lottery_template_dedup_mode() != "global":
-        template_identity = ""
-    template_key = "dedup:lottery-template:" + sha(template_identity) if template_identity else ""
+    template_identities: list[str] = []
+    if lottery_template_dedup_mode() == "global":
+        seen_identities: set[str] = set()
+        for identity in (
+            profile.get("lottery_template_identity") or "",
+            profile.get("lottery_global_identity") or "",
+        ):
+            if identity and identity not in seen_identities:
+                seen_identities.add(identity)
+                template_identities.append(identity)
+    template_keys = [
+        "dedup:lottery-template:" + sha(identity)
+        for identity in template_identities
+    ]
 
     real_ttl_minutes = ttl_minutes_for_profile(profile, ttl_minutes) if ttl_minutes is None else int(ttl_minutes)
     if int(real_ttl_minutes) <= 0:
@@ -574,7 +614,7 @@ def check_and_mark(
     pipe.set(content_key, dedup_id, ex=ttl_seconds, nx=True)
     if message_link:
         pipe.set(link_key, dedup_id, ex=ttl_seconds, nx=True)
-    if template_key:
+    for template_key in template_keys:
         pipe.set(template_key, dedup_id, ex=LOTTERY_TEMPLATE_WINDOW_SECONDS, nx=True)
     results = pipe.execute()
 
@@ -590,30 +630,35 @@ def check_and_mark(
     result_index = 1
     link_is_new = results[result_index] if message_link else True
     result_index += 1 if message_link else 0
-    template_is_new = results[result_index] if template_key else True
 
     if not link_is_new:
         reason = f"同一条原消息链接重复（{real_ttl_minutes}分钟内）"
         _record_duplicate(dedup_id, profile, reason, source, message_link, ttl_seconds)
         return True, reason, profile
 
-    if not template_is_new:
-        existing_id = r.get(template_key) or dedup_id
-        explicit_id_conflict = (
-            bool(profile.get("lottery_identity"))
-            and str(existing_id).startswith("lottery:")
-            and existing_id != dedup_id
-        )
-        if not explicit_id_conflict:
-            reason = "同一抽奖的不同模板重复（10分钟内）"
-            _record_duplicate(existing_id, profile, reason, source, message_link, ttl_seconds)
-            return True, reason, profile
+    template_new: list[bool] = []
+    for template_key in template_keys:
+        template_is_new = results[result_index]
+        result_index += 1
+        template_new.append(template_is_new)
+        if not template_is_new:
+            existing_id = r.get(template_key) or dedup_id
+            explicit_id_conflict = (
+                bool(profile.get("lottery_identity"))
+                and str(existing_id).startswith("lottery:")
+                and existing_id != dedup_id
+            )
+            if not explicit_id_conflict:
+                reason = "同一抽奖的不同模板重复（10分钟内）"
+                _record_duplicate(existing_id, profile, reason, source, message_link, ttl_seconds)
+                return True, reason, profile
 
     redis_keys = [content_key]
     if link_key:
         redis_keys.append(link_key)
-    if template_key and template_is_new:
-        redis_keys.append(template_key)
+    for template_key, template_is_new in zip(template_keys, template_new):
+        if template_is_new:
+            redis_keys.append(template_key)
     _register_new(profile, redis_keys, ttl_seconds, source, "首次命中")
     return False, "未重复", profile
 

@@ -46,6 +46,9 @@ SECOND_POST = """瞬影公费新服上线
 参与要求
 """
 
+FULL_FIRST = FIRST_POST + "\n🔑 口令：LOTTERYKEY\n📑 活动详情：详情A"
+FULL_SECOND = SECOND_POST + "\n🔑 口令：NEWKEY\n📑 活动详情：详情B"
+
 
 class GlobalStartedLotteryDedupV1398Tests(unittest.TestCase):
     def test_group_order_change_keeps_one_global_lottery_identity(self):
@@ -89,6 +92,29 @@ class GlobalStartedLotteryDedupV1398Tests(unittest.TestCase):
         self.assertTrue(original)
         self.assertNotEqual(original, changed_deadline)
         self.assertNotEqual(original, changed_prize)
+
+    def test_global_identity_still_blocks_when_optional_fields_differ(self):
+        dedup, _client = load_dedup()
+
+        first_identity = dedup.build_profile(FULL_FIRST)["lottery_template_identity"]
+        second_identity = dedup.build_profile(FULL_SECOND)["lottery_template_identity"]
+        first_global = dedup.build_profile(FULL_FIRST)["lottery_global_identity"]
+        second_global = dedup.build_profile(FULL_SECOND)["lottery_global_identity"]
+
+        self.assertNotEqual(first_identity, second_identity)
+        self.assertTrue(first_global)
+        self.assertEqual(first_global, second_global)
+
+        first_duplicate, _reason, _profile = dedup.check_and_mark(
+            FULL_FIRST, "https://t.me/syemby/100400", None, "strict", "瞬影EMBY交流群"
+        )
+        second_duplicate, reason, _profile = dedup.check_and_mark(
+            FULL_SECOND, "https://t.me/ShardCatDen/661300", None, "strict", "碎片谷雨小窝"
+        )
+
+        self.assertFalse(first_duplicate)
+        self.assertTrue(second_duplicate)
+        self.assertIn("同一抽奖的不同模板", reason)
 
 
 if __name__ == "__main__":
