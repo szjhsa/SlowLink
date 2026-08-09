@@ -2,6 +2,7 @@ import json
 import re
 import time
 from typing import Any
+import regex as _regex
 
 from redis_store import get_json, set_json
 from invite_path_codes import extract_first_invite_path_code
@@ -10,6 +11,7 @@ from telegram_start_links import (
 )
 
 CODE_RULES_KEY = "code_rules"
+CODE_RULE_MATCH_TIMEOUT_SECONDS = 0.05
 
 LEGACY_MASKED_REGISTER_SUFFIX_PATTERN = r"(?:[A-Za-z0-9_-]|数字|字母)+"
 LEGACY_REGISTER_SUFFIX_BOUNDARY = (
@@ -275,7 +277,7 @@ def add_code_rule(name: str, pattern: str, group: str = "0", fast: bool = True, 
         "strict_context": strict_context,
     })
     # 保存前先编译，避免坏规则进库。
-    re.compile(item["pattern"], re.I | re.M | re.S)
+    _regex.compile(item["pattern"], _regex.I | _regex.M | _regex.S)
     if not any(r.get("pattern") == item["pattern"] and r.get("group") == item["group"] for r in rules):
         rules.append(item)
     save_code_rules(rules)
@@ -298,7 +300,7 @@ def update_code_rule(index: int, patch: dict[str, Any]) -> bool:
     current.update(patch or {})
     item = _normalize_rule(current)
     # 保存前先编译，避免坏规则进库。
-    re.compile(item["pattern"], re.I | re.M | re.S)
+    _regex.compile(item["pattern"], _regex.I | _regex.M | _regex.S)
     rules[index] = item
     save_code_rules(rules)
     return True
@@ -314,8 +316,8 @@ def _compiled_rules(ttl: float = 30.0):
         if not rule.get("enabled", True):
             continue
         try:
-            compiled.append((idx, rule, re.compile(rule["pattern"], re.I | re.M | re.S)))
-        except re.error:
+            compiled.append((idx, rule, _regex.compile(rule["pattern"], _regex.I | _regex.M | _regex.S)))
+        except _regex.error:
             continue
     _CACHE.update({"ts": now, "raw": raw_rules, "compiled": compiled})
     return compiled
@@ -560,7 +562,9 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
             continue
         for candidate in candidates:
             try:
-                m = cre.search(candidate)
+                m = cre.search(candidate, timeout=CODE_RULE_MATCH_TIMEOUT_SECONDS)
+            except TimeoutError:
+                continue
             except Exception:
                 continue
             if not m:
@@ -601,8 +605,8 @@ def code_rule_diagnostics() -> list[dict[str, Any]]:
     out = []
     for i, rule in enumerate(get_code_rules()):
         try:
-            re.compile(rule.get("pattern", ""), re.I | re.M | re.S)
+            _regex.compile(rule.get("pattern", ""), _regex.I | _regex.M | _regex.S)
             out.append({"index": i, "ok": True, **rule, "error": ""})
-        except re.error as e:
+        except _regex.error as e:
             out.append({"index": i, "ok": False, **rule, "error": str(e)})
     return out

@@ -64,6 +64,7 @@ class BotManager:
         self._last_trim_ts = 0.0
         self._last_heartbeat_log = 0.0
         self._entity_cache_refreshed_ts = 0.0
+        self._last_force_entity_refresh_ts = 0.0
         # Telegram push-delay self-healing state. Reconnect is deliberately
         # bounded by a cooldown so delayed bursts do not cause reconnect churn.
         self._telegram_delay_high_count = 0
@@ -144,6 +145,7 @@ class BotManager:
                     return None
             except Exception:
                 pass
+        self._last_force_entity_refresh_ts = time.monotonic()
         dialogs = await client.get_dialogs(limit=None)
         self.entity_cache = build_entity_cache(dialogs)
         try:
@@ -327,7 +329,10 @@ class BotManager:
         try:
             with self.lock:
                 if spec in self._worker_specs:
-                    self._worker_specs.remove(spec)
+                    idx = self._worker_specs.index(spec)
+                    self._worker_specs.pop(idx)
+                    if idx < len(self.workers):
+                        self.workers.pop(idx)
         except Exception:
             pass
 
@@ -415,7 +420,8 @@ class BotManager:
         self.stop_event = asyncio.Event()
         try:
             self._verbose_log("info", "监听线程进入事件循环")
-            self.loop.run_until_complete(self._run())
+            with SESSION_LOCK:
+                self.loop.run_until_complete(self._run())
         except Exception as e:
             set_value("bot_status", "error")
             add_fail({"stage": "runner", "error": str(e)})
@@ -695,9 +701,9 @@ class BotManager:
     async def _reconnect_listener_client(self, client: TelegramClient):
         """Reconnect Telethon client when the update stream looks stale.
 
-        Event handlers stay registered on the same client. We rebuild dialog and
-        target caches after reconnect, but this runs outside the hot forwarding
-        path and only after repeated high Telegram push delays.
+        Event handlers stay registered on the same client. This only reconnects
+        the transport; dialog and target caches are reused, and stale entities
+        are refreshed on the send path when a target fails.
         """
         reason = self._reconnect_reason or "Telegram 推送延迟过高"
         proactive = reason == "_proactive_"
@@ -1030,6 +1036,8 @@ class BotManager:
 
     async def _send_with_retry(self, client: TelegramClient, target: str, text: str, max_retries: int = 3):
         last_error = None
+        refreshed = False
+        cache_key = normalize_chat_value(target)
         for attempt in range(max_retries):
             if attempt > 0:
                 jitter = random.uniform(0.8, 1.2)
@@ -1053,6 +1061,13 @@ class BotManager:
                 raise
             except Exception as e:
                 last_error = e
+                if not refreshed:
+                    refreshed = True
+                    try:
+                        await self._refresh_entity_cache(client, force=True)
+                        self._target_entity_cache.pop(cache_key, None)
+                    except Exception:
+                        pass
         # All retries exhausted - write to failed queue for background recovery
         try:
             r.lpush("failed_queue", _json.dumps({"text": text, "target": target, "ts": int(time.time())}, ensure_ascii=False))

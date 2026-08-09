@@ -794,6 +794,17 @@ def release_dedup(dedup_id: str) -> bool:
         return False
     meta = _load_meta(dedup_id)
     keys = list(meta.get("redis_keys") or []) if meta else []
+    if not meta:
+        # Meta expired or was lost; remove any dedup key still pointing at this id.
+        try:
+            for k in r.scan_iter(match="dedup:*", count=200):
+                try:
+                    if str(r.type(k) or "") == "string" and r.get(k) == dedup_id:
+                        keys.append(k)
+                except Exception:
+                    continue
+        except Exception:
+            pass
     keys.append(_meta_key(dedup_id))
     # dedup_id is "text:<text_hash>"; the actual Redis key is "dedup:" + dedup_id.
     # Link keys are stored in meta.redis_keys when available; we cannot

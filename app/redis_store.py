@@ -411,6 +411,21 @@ def dedup_stats(limit: int = 20) -> dict:
 
 
 COLLISION_LIST = "dedup:collisions"
+_COLLISION_FILTER_SCRIPT = """
+local items = redis.call('LRANGE', KEYS[1], 0, -1)
+local kept = {}
+for i, raw in ipairs(items) do
+  local ok, item = pcall(cjson.decode, raw)
+  if not ok or not (item['dedup_id'] == ARGV[1] and item['identity'] == ARGV[2]) then
+    kept[#kept + 1] = raw
+  end
+end
+redis.call('DEL', KEYS[1])
+if #kept > 0 then
+  redis.call('RPUSH', KEYS[1], unpack(kept))
+end
+return #kept
+"""
 
 
 def add_lottery_collision(item: dict, limit: int = 200) -> None:
@@ -460,25 +475,28 @@ def mark_collision_distinct(identity: str, dedup_id: str) -> bool:
     except Exception:
         return False
     try:
-        items = r.lrange(COLLISION_LIST, 0, -1)
-        kept = []
-        for raw in items:
-            try:
-                item = json.loads(raw)
-            except Exception:
-                kept.append(raw)
-                continue
-            if (
-                str(item.get("dedup_id") or "") == str(dedup_id)
-                and str(item.get("identity") or "") == str(identity)
-            ):
-                continue
-            kept.append(raw)
-        r.delete(COLLISION_LIST)
-        if kept:
-            r.rpush(COLLISION_LIST, *kept)
+        r.eval(_COLLISION_FILTER_SCRIPT, 1, COLLISION_LIST, str(dedup_id), str(identity))
     except Exception:
-        pass
+        try:
+            items = r.lrange(COLLISION_LIST, 0, -1)
+            kept = []
+            for raw in items:
+                try:
+                    item = json.loads(raw)
+                except Exception:
+                    kept.append(raw)
+                    continue
+                if (
+                    str(item.get("dedup_id") or "") == str(dedup_id)
+                    and str(item.get("identity") or "") == str(identity)
+                ):
+                    continue
+                kept.append(raw)
+            r.delete(COLLISION_LIST)
+            if kept:
+                r.rpush(COLLISION_LIST, *kept)
+        except Exception:
+            pass
     return True
 
 
@@ -589,9 +607,11 @@ ACTIVE_DEDUP_PATTERNS = [
     "dedup:link:*",
     "dedup:code:*",
     "dedup:lottery:*",
+    "dedup:lottery-template:*",
     "dedup:register_snapshot:*",
     "dedup:content_url:*",
     "dedup:text:*",
+    "dedup:collision_exempt:*",
 ]
 
 DEDUP_META_PATTERNS = ["dedup:meta:*"]
@@ -617,7 +637,7 @@ def cache_stats() -> dict:
     dedup_meta = count_patterns(DEDUP_META_PATTERNS)
     result = {
         "redis_keys": safe_dbsize(),
-        "record_logs": list_len("events") + list_len("hits") + list_len("fails") + list_len("dedup:recent") + list_len("perf_events"),
+        "record_logs": list_len("events") + list_len("hits") + list_len("fails") + list_len("dedup:recent") + list_len("perf_events") + list_len("dedup:collisions"),
         "events": list_len("events"),
         "hits": list_len("hits"),
         "fails": list_len("fails"),

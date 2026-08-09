@@ -1,12 +1,40 @@
 import re
 import time
 import unicodedata
+import regex as _regex
 from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "keywords": [], "regexes": []}
-_ANALYZE_CACHE = {"ts": 0.0, "text": None, "result": None}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
+_SLOW_RULE_LOG: dict[str, float] = {}
+
+# User-supplied regexes run on the listener event loop. A catastrophic rule
+# must be bounded so one bad pattern cannot pin a single-core VPS at 100%.
+REGEX_MATCH_TIMEOUT_SECONDS = 0.05
+
+
+def _log_rule_timeout(rule: str) -> None:
+    now = time.monotonic()
+    key = rule or ""
+    if now - _SLOW_RULE_LOG.get(key, 0.0) < 60:
+        return
+    _SLOW_RULE_LOG[key] = now
+    try:
+        from redis_store import log_line
+        log_line("warning", f"正则匹配超时已跳过（>{int(REGEX_MATCH_TIMEOUT_SECONDS * 1000)}ms）：{(rule or '')[:120]}")
+    except Exception:
+        pass
+
+
+def _safe_search(compiled, text: str):
+    try:
+        return compiled.search(text, timeout=REGEX_MATCH_TIMEOUT_SECONDS)
+    except TimeoutError:
+        _log_rule_timeout(getattr(compiled, "pattern", "") or "")
+        return None
+    except Exception:
+        return None
 
 # ---- pre-compiled guards (unchanged) ----
 
@@ -147,17 +175,11 @@ def _split_rule_blob(blob: str) -> list[str]:
 def invalidate_rule_cache():
     _RULE_CACHE.clear()
     _RULE_CACHE.update({"ts": 0.0, "raw": None, "keywords": [], "regexes": []})
-    _ANALYZE_CACHE.update({"ts": 0.0, "text": None, "result": None})
     _EXCLUDE_TEXT_CACHE.update({"ts": 0.0, "raw": None, "items": []})
 
 
-def _rule_blob_snapshot() -> tuple[str, ...]:
-    rules = smembers("regex_rules")
-    return tuple(sorted(rules))
-
-
 def _compiled_rules(ttl: float = 60.0):
-    """Compile each user rule unchanged with the established re.I/re.M flags."""
+    """Compile each user rule unchanged with timeout-enabled matching."""
     now = time.monotonic()
     cached_raw = _RULE_CACHE.get("raw")
     cached_ts = float(_RULE_CACHE.get("ts") or 0)
@@ -175,9 +197,9 @@ def _compiled_rules(ttl: float = 60.0):
             seen.add(rule)
 
             try:
-                cre = re.compile(rule, re.I | re.M)
+                cre = _regex.compile(rule, _regex.I | _regex.M)
                 regexes.append((rule, cre))
-            except re.error:
+            except _regex.error:
                 continue
 
     _RULE_CACHE.update({"ts": now, "raw": raw, "keywords": [], "regexes": regexes})
@@ -319,20 +341,17 @@ def analyze_message(text: str) -> dict:
 
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
-        try:
-            if cre.search(original):
-                code_detail = extract_code_detail(normalized) or extract_code_detail(compact)
-                return {
-                    "matched": True,
-                    "rule": raw,
-                    "code_detail": code_detail or {},
-                    "normalized": normalized,
-                    "compact": compact,
-                    "usage_notice": False,
-                    "closed_register_notice": False,
-                }
-        except Exception:
-            continue
+        if _safe_search(cre, original):
+            code_detail = extract_code_detail(normalized) or extract_code_detail(compact)
+            return {
+                "matched": True,
+                "rule": raw,
+                "code_detail": code_detail or {},
+                "normalized": normalized,
+                "compact": compact,
+                "usage_notice": False,
+                "closed_register_notice": False,
+            }
 
     trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
     if trigger_detail and trigger_detail.get("can_trigger"):
@@ -386,11 +405,8 @@ def match_rules(text: str) -> tuple[bool, str]:
 
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
-        try:
-            if cre.search(text):
-                return True, raw
-        except Exception:
-            continue
+        if _safe_search(cre, text):
+            return True, raw
 
     # Code-trigger fallback
     code_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
@@ -414,9 +430,9 @@ def rule_diagnostics() -> list[dict]:
     items = []
     for rule in expanded_rules():
         try:
-            re.compile(rule, re.I | re.M)
+            _regex.compile(rule, _regex.I | _regex.M)
             items.append({"rule": rule, "type": "regex", "ok": True, "error": ""})
-        except re.error as e:
+        except _regex.error as e:
             items.append({"rule": rule, "type": "regex", "ok": False, "error": str(e)})
     return items
 
@@ -474,18 +490,15 @@ def match_rule_details(text: str) -> dict:
 
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
-        try:
-            if cre.search(original):
-                return {
-                    "matched": True, "rule": raw, "candidate": "原始文本",
-                    "usage_notice": False, "closed_register_notice": False,
-                    "code_detected": bool(code_detail),
-                    "code_rule": code_detail.get("name", "") if code_detail else "",
-                    "code_note": code_detail.get("safe_reason", "") if code_detail else "",
-                    "original": original, "normalized": normalized, "compact": compact,
-                }
-        except Exception:
-            continue
+        if _safe_search(cre, original):
+            return {
+                "matched": True, "rule": raw, "candidate": "原始文本",
+                "usage_notice": False, "closed_register_notice": False,
+                "code_detected": bool(code_detail),
+                "code_rule": code_detail.get("name", "") if code_detail else "",
+                "code_note": code_detail.get("safe_reason", "") if code_detail else "",
+                "original": original, "normalized": normalized, "compact": compact,
+            }
 
     # Code trigger fallback
     trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)

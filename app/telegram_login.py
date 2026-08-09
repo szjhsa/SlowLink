@@ -9,6 +9,14 @@ from redis_store import get, set_value, delete, push_event, r
 from telegram_session_lock import SESSION_LOCK
 
 
+def _listener_running() -> bool:
+    try:
+        from bot_runner import manager
+        return bool(manager.is_running())
+    except Exception:
+        return False
+
+
 def _api() -> tuple[int, str]:
     api_id = int(get("tg_api_id", "0") or 0)
     api_hash = get("tg_api_hash", "") or ""
@@ -34,6 +42,8 @@ def save_api(api_id: str, api_hash: str, phone: str) -> None:
 
 
 async def send_code() -> str:
+    if _listener_running():
+        raise ValueError("请先停止监听后再登录或重新登录")
     api_id, api_hash = _api()
     phone = get("tg_phone", "") or ""
     if not phone:
@@ -51,6 +61,8 @@ async def send_code() -> str:
 
 
 async def sign_in(code: str, password: str = "") -> dict:
+    if _listener_running():
+        raise ValueError("请先停止监听后再登录或重新登录")
     api_id, api_hash = _api()
     phone = get("tg_phone", "") or ""
     phone_code_hash = get("tg_phone_code_hash", "") or ""
@@ -89,6 +101,14 @@ async def sign_in(code: str, password: str = "") -> dict:
 
 
 async def status() -> dict:
+    if _listener_running():
+        if (get("tg_logged_in", "0") or "0") == "1":
+            return {
+                "logged_in": True,
+                "user": get("tg_current_user", "已登录") or "已登录",
+                "id": get("tg_current_id", ""),
+            }
+        return {"logged_in": False, "user": "未登录"}
     api_id_raw = get("tg_api_id", "0") or "0"
     api_hash = get("tg_api_hash", "") or ""
     if not api_id_raw.isdigit() or not int(api_id_raw) or not api_hash:

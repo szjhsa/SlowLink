@@ -2,4 +2,5 @@ telethon==1.44.0
 flask==3.0.3
 redis==5.0.8
 waitress==3.0.2
+regex==2026.7.19
 
