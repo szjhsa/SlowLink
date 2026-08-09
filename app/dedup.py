@@ -305,6 +305,10 @@ def extract_lottery_template_identity(text: str, message_link: str = "", source:
                 f"deadline:{deadline}|title:{title}|publish:{'|'.join(publish_groups)}"
                 f"|prizes:{'|'.join(prizes)}|passphrase:{passphrase}|details:{'|'.join(details)}"
             )
+        if title and deadline and prizes:
+            return (
+                f"started:title:{title}|deadline:{deadline}|prizes:{'|'.join(prizes)}"
+            )
 
     if "刮刮乐" not in raw:
         return ""
