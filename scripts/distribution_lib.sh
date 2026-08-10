@@ -543,4 +543,6 @@ deploy_application() {
     fi
     verify_container_version || die "容器版本校验失败"
   fi
+  log "清理 Docker 构建缓存（保留 24h 以内）"
+  docker builder prune -af --filter until=24h >/dev/null 2>&1 || true
 }
