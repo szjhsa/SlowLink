@@ -6,6 +6,7 @@ import unicodedata
 from typing import Any
 
 from invite_path_codes import extract_invite_path_codes
+from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from redis_store import r, sha, format_time
 from telegram_start_links import extract_telegram_start_register_renew_codes
 
@@ -437,6 +438,7 @@ REGISTER_RENEW_CODE_RE = re.compile(
     + REGISTER_RENEW_SUFFIX_BOUNDARY,
     re.I,
 )
+HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
 
 SOURCE_LINE_HINTS = [
     "官方频道", "频道", "交流群", "官方群", "订阅", "群组", "发布", "通知频道"
@@ -450,6 +452,10 @@ def _register_renew_code_fingerprints(text: str) -> list[str]:
         match.group(1).strip()
         for match in REGISTER_RENEW_CODE_RE.finditer(text or "")
     ]
+    codes.extend(
+        match.group(0).strip()
+        for match in HYPHEN_REGISTER_RENEW_RE.finditer(text or "")
+    )
     codes.extend(extract_telegram_start_register_renew_codes(text))
     for code in codes:
         if not code or code in seen:

@@ -5,6 +5,7 @@ import regex as _regex
 
 from redis_store import get_json, set_json
 from invite_path_codes import extract_first_invite_path_code
+from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from telegram_start_links import (
     extract_first_telegram_start_register_renew_code,
 )
@@ -193,6 +194,7 @@ NEGATIVE_CONTEXT = [
 ]
 
 REGISTER_RENEW_RE = re.compile(SAFE_REGISTER_RENEW_PATTERN, re.I | re.M)
+HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
 WHITELIST_RE = re.compile(SAFE_WHITELIST_PATTERN, re.I | re.M)
 GUESS_WHITELIST_RE = re.compile(SAFE_GUESS_WHITELIST_PATTERN, re.I | re.M)
 MARKDOWN_REGISTER_RENEW_RE = re.compile(
@@ -354,6 +356,16 @@ def _extract_markdown_register_renew_code(text: str) -> str:
     return ""
 
 
+def _extract_hyphen_register_renew_code(text: str) -> str:
+    """Extract project-register-segment-segment codes without day/underscore."""
+    raw = text or ""
+    for candidate in [raw, *raw.splitlines()]:
+        match = HYPHEN_REGISTER_RENEW_RE.search(candidate)
+        if match:
+            return _clean_code_value(match.group(0))
+    return ""
+
+
 def _extract_whitelist_code(text: str) -> str:
     for candidate in [text or "", *(text or "").splitlines()]:
         for pattern in (WHITELIST_RE, GUESS_WHITELIST_RE):
@@ -382,7 +394,12 @@ def _is_safe_code_context(text: str, code: str, rule: dict[str, Any]) -> tuple[b
     code = code or ""
     if code and re.search(re.escape(code) + r"(?:-[^\s-]+)*-(?:Register|Renew)_", raw, re.I):
         return False, "疑似不完整 Register/Renew 前缀"
-    if REGISTER_RENEW_RE.search(code) or REGISTER_RENEW_RE.search(raw):
+    if (
+        REGISTER_RENEW_RE.search(code)
+        or REGISTER_RENEW_RE.search(raw)
+        or HYPHEN_REGISTER_RENEW_RE.search(code)
+        or HYPHEN_REGISTER_RENEW_RE.search(raw)
+    ):
         return True, "Register/Renew 强格式"
     if (
         WHITELIST_RE.search(code)
@@ -440,7 +457,12 @@ def _canonical_code_identity(code: str, rule: dict[str, Any], raw_text: str = ""
         or GUESS_WHITELIST_RE.search(raw_text or "")
     ):
         return "strong_whitelist:" + compact
-    if REGISTER_RENEW_RE.search(compact) or REGISTER_RENEW_RE.search(raw_text or ""):
+    if (
+        REGISTER_RENEW_RE.search(compact)
+        or REGISTER_RENEW_RE.search(raw_text or "")
+        or HYPHEN_REGISTER_RENEW_RE.search(compact)
+        or HYPHEN_REGISTER_RENEW_RE.search(raw_text or "")
+    ):
         # Register/Renew 的随机码可能大小写敏感，保留原始大小写，只清理空白。
         return "strong_register_renew:" + compact
     if re.match(r"(?i)^INV-[A-Z0-9]+(?:-[A-Z0-9]+)+$", compact):
@@ -548,6 +570,32 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
                 "pattern": direct_rule.get("pattern") or REGISTER_RENEW_RE.pattern,
                 "code": direct_code,
                 "identity": _canonical_code_identity(direct_code, direct_rule, raw),
+                "fast": bool(direct_rule.get("fast", True)),
+                "trigger": bool(trigger_only or direct_rule.get("trigger", False)),
+                "can_trigger": can_trigger,
+                "strict_context": bool(direct_rule.get("strict_context", False)),
+                "safe": safe,
+                "safe_reason": safe_reason,
+            }
+
+    hyphen_code = _extract_hyphen_register_renew_code(raw)
+    if hyphen_code:
+        direct_rule = {
+            "name": "Register/Renew 完整码",
+            "pattern": HYPHEN_REGISTER_RENEW_RE.pattern,
+            "fast": True,
+            "trigger": False,
+            "strict_context": False,
+        }
+        safe, safe_reason = _is_safe_code_context(raw, hyphen_code, direct_rule)
+        if not safe_only or safe:
+            can_trigger = safe and (trigger_only or bool(direct_rule.get("trigger", False)))
+            return {
+                "index": -1,
+                "name": direct_rule.get("name") or "Register/Renew 完整码",
+                "pattern": direct_rule.get("pattern") or HYPHEN_REGISTER_RENEW_RE.pattern,
+                "code": hyphen_code,
+                "identity": _canonical_code_identity(hyphen_code, direct_rule, raw),
                 "fast": bool(direct_rule.get("fast", True)),
                 "trigger": bool(trigger_only or direct_rule.get("trigger", False)),
                 "can_trigger": can_trigger,

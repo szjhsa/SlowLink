@@ -4,6 +4,7 @@ import unicodedata
 import regex as _regex
 from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
+from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
@@ -43,12 +44,14 @@ USAGE_HARD_WORDS = [
     "被使用", "已被使用", "已经使用", "使用成功",
     "使用了", "兑换成功", "已兑换", "被兑换", "激活成功",
     "领取成功", "已领取", "被领取", "使用者", "使用用户",
+    "使用注册码", "使用邀请码", "成功注册账号", "成功注册",
 ]
 
 CODE_LINE_RE = re.compile(
     r"^.+-\d+-(?:Register|Renew)_[^\s*`]+$",
     re.I,
 )
+HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
 INV_CODE_RE = re.compile(r"\bINV-[A-Z0-9]+(?:-[A-Z0-9]+)+\b", re.I)
 USAGE_STATUS_RE = re.compile(r"已使用\s*[:：]\s*\d+\s*次?", re.I)
 
@@ -221,6 +224,7 @@ def _is_usage_notice(normalized: str, compact: str) -> bool:
         or "register?code=" in low
         or "register_" in compact_low
         or "renew_" in compact_low
+        or bool(HYPHEN_REGISTER_RENEW_RE.search(compact))
         or bool(CODE_LINE_RE.search(compact))
         or bool(INV_CODE_RE.search(compact))
     )
