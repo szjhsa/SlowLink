@@ -14,6 +14,7 @@ EXPECTED_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()
 SAMPLES = [
     "Cc-register-TwPaGelK-uSvj-eWY-uEhZA",
     "Peach-register-dvCi74pyjNDEH6K-t5uiFXU-gKkxP-Q0n",
+    "Cc-register-Ugln数字字母fY-IUwx-Cax-j6rYe",
 ]
 
 
@@ -72,6 +73,20 @@ class HyphenRegisterCodesV13917Tests(unittest.TestCase):
 
         self.assertFalse(result["matched"])
         self.assertTrue(result["usage_notice"])
+
+    def test_generated_code_success_message_is_not_usage_filtered(self):
+        matcher = load_real_matcher()
+        generated = (
+            "🎁恭喜,生成注册码成功!\n"
+            "💰剩余积分为: 0\n"
+            "✨注册码:Cc-register-Ugln数字字母fY-IUwx-Cax-j6rYe\n\n"
+            "Tips:也可以在 **注册码-专属注册码** 那里查看!"
+        )
+
+        result = matcher.match_rule_details(generated)
+
+        self.assertTrue(result["matched"])
+        self.assertFalse(result["usage_notice"])
 
     def test_hyphen_code_fingerprints_are_in_register_renew_family(self):
         code_rules, _saved = load_code_rules_with_fake_redis()
