@@ -65,9 +65,14 @@ CLOSED_REGISTER_RE = re.compile(
     re.I,
 )
 REGISTRATION_STATUS_RE = re.compile(
-    r"(?m)^[^\w\u3400-\u9fff]*注册状态\s*[|｜:：]\s*"
+    r"(?m)^[^\n]*?(?:注册|开注)状态\s*[|｜:：]\s*"
     r"(?P<state>true|false|on|off|enabled|disabled|1|0|已开启|开启|开放|已关闭|关闭|未开放)"
     r"(?=$|\s|[•·])",
+    re.I,
+)
+EXHAUSTED_REGISTER_RE = re.compile(
+    r"(?:剩余可注册(?:人数)?|剩余名额|可注册名额)\s*[|｜:：]\s*"
+    r"(?:\*\*)?\s*0\s*(?:\*\*)?",
     re.I,
 )
 OPEN_REGISTRATION_STATES = {"true", "on", "enabled", "1", "已开启", "开启", "开放"}
@@ -266,6 +271,9 @@ def _is_closed_register_notice(normalized: str, compact: str) -> bool:
     ])
     if not has_register_marker:
         return False
+
+    if EXHAUSTED_REGISTER_RE.search(normalized) or EXHAUSTED_REGISTER_RE.search(compact):
+        return True
 
     return bool(CLOSED_REGISTER_RE.search(normalized) or CLOSED_REGISTER_RE.search(compact))
 
