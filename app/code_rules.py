@@ -473,12 +473,10 @@ def _canonical_code_identity(code: str, rule: dict[str, Any], raw_text: str = ""
         or "register/renew" in rule_name.lower()
         or rule_pattern == "telegram_bot_start_register_renew"
     )
-    if (
-        WHITELIST_RE.search(compact)
-        or WHITELIST_RE.search(raw_text or "")
-        or GUESS_WHITELIST_RE.search(compact)
-        or GUESS_WHITELIST_RE.search(raw_text or "")
-    ):
+    is_whitelist_rule = "whitelist" in rule_name.lower() or "whitelist" in rule_pattern.lower()
+    whitelist_self = WHITELIST_RE.search(compact) or GUESS_WHITELIST_RE.search(compact)
+    whitelist_raw = WHITELIST_RE.search(raw_text or "") or GUESS_WHITELIST_RE.search(raw_text or "")
+    if whitelist_self or (is_whitelist_rule and whitelist_raw):
         return "strong_whitelist:" + compact
     strong_self = REGISTER_RENEW_RE.search(compact) or HYPHEN_REGISTER_RENEW_RE.search(compact)
     strong_raw = REGISTER_RENEW_RE.search(raw_text or "") or HYPHEN_REGISTER_RENEW_RE.search(raw_text or "")
@@ -736,18 +734,20 @@ def extract_code_identities(text: str) -> list[str]:
     for _idx, rule, cre in _compiled_rules():
         for candidate in candidates:
             try:
-                m = cre.search(candidate, timeout=CODE_RULE_MATCH_TIMEOUT_SECONDS)
+                matches = cre.finditer(candidate, timeout=CODE_RULE_MATCH_TIMEOUT_SECONDS)
             except Exception:
                 continue
-            if not m:
-                continue
-            code = _clean_code_value(_pick_group(m, str(rule.get("group") or "0")))
-            if not code:
-                continue
-            safe, _safe_reason = _is_safe_code_context(raw, code, rule)
-            if safe:
-                push(_canonical_code_identity(code, rule, raw))
-            break
+            found = False
+            for m in matches:
+                found = True
+                code = _clean_code_value(_pick_group(m, str(rule.get("group") or "0")))
+                if not code:
+                    continue
+                safe, _safe_reason = _is_safe_code_context(raw, code, rule)
+                if safe:
+                    push(_canonical_code_identity(code, rule, raw))
+            if found:
+                break
 
     return identities
 

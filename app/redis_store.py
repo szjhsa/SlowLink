@@ -303,8 +303,11 @@ def _write_records_now(key: str, records: list[tuple[str, int]]) -> None:
             pipe.lpush(key, raw)
             pipe.ltrim(key, 0, limit - 1)
         pipe.execute()
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            log_line("error", f"批量写入 Redis 失败：{e}")
+        except Exception:
+            pass
 
 
 def flush_batch_records() -> None:
@@ -787,7 +790,10 @@ def cleanup_expired_dedup_keys() -> int:
                 pipe.ttl(k)
             ttls = pipe.execute()
             for k, ttl_val in zip(keys, ttls):
-                if int(ttl_val or -1) < -1:
+                if (
+                    str(r.type(k) or "") == "string"
+                    and int(ttl_val or -1) < -1
+                ):
                     r.delete(k)
                     deleted += 1
             if cursor == 0:

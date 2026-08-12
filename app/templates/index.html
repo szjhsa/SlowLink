@@ -274,7 +274,7 @@
         <h3>备份恢复</h3>
         <div class="two-col">
           <div class="backup-box"><h4>导出</h4><p class="hint">点击后直接下载 JSON 备份文件。</p><a class="button-link" href="/export_config">下载配置备份</a></div>
-          <div class="backup-box"><h4>导入</h4><form action="/import_config" method="post" enctype="multipart/form-data" class="stack" data-ajax="1"><input type="file" name="backup_file" accept="application/json,.json"><label>导入方式<select name="mode"><option value="overwrite">覆盖当前配置</option><option value="merge">合并到当前配置</option><option value="rules_only">只导入监听 / 排除会话 / 排除文本 / 正则</option></select></label><button class="warning">导入备份文件</button></form></div>
+          <div class="backup-box"><h4>导入</h4><form action="/import_config" method="post" enctype="multipart/form-data" class="stack" data-ajax="1"><input type="file" name="backup_file" accept="application/json,.json"><label>导入方式<select name="mode"><option value="overwrite">覆盖当前配置</option><option value="merge">合并到当前配置</option><option value="rules_only">只导入正则规则</option></select></label><button class="warning">导入备份文件</button></form></div>
         </div>
         <p class="hint">备份包含监听、排除会话、排除文本、正则、转发目标、去重设置；不包含后台密码、API_HASH、Telegram session、去重缓存。</p>
       </div>

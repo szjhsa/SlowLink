@@ -5,6 +5,8 @@ import secrets
 import threading
 import time
 
+import regex as _regex
+
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
 
@@ -37,6 +39,7 @@ from redis_store import (
     list_hits,
     list_perf_events,
     log_line,
+    migrate_known_regex_rules,
     push_event,
     r,
     sadd,
@@ -660,13 +663,15 @@ def _add_set(redis_key: str, form_key: str, ok_msg: str):
 def _del_set(redis_key: str):
     value = request.form.get("value", "").strip()
     if value:
-        srem(redis_key, value)
+        removed = srem(redis_key, value)
         invalidate_rule_cache()
         try:
             manager.clear_runtime_cache()
         except Exception:
             pass
-        return done("已删除", "success")
+        if removed:
+            return done("已删除", "success")
+        return done("删除失败：不存在该内容", "warning", ok=False)
     return done("删除失败：内容为空", "error", ok=False)
 
 
@@ -752,9 +757,11 @@ def save_monitor_panel():
         return gate
     selected = [x.strip() for x in request.form.getlist("monitors") if x.strip()]
     try:
-        delete("monitor_chats")
+        pipe = r.pipeline()
+        pipe.delete("monitor_chats")
         for value in selected:
-            sadd("monitor_chats", value)
+            pipe.sadd("monitor_chats", value)
+        pipe.execute()
         try:
             manager.clear_runtime_cache()
         except Exception:
@@ -802,6 +809,14 @@ def add_regex():
     gate = require_login()
     if gate:
         return gate
+    value = request.form.get("value", "").strip()
+    if not value:
+        return done("内容不能为空", "error", ok=False)
+    try:
+        for rule in value.split(";;"):
+            _regex.compile(rule, _regex.I | _regex.M)
+    except Exception as e:
+        return done(f"正则规则无效：{e}", "error", ok=False)
     return _add_set("regex_rules", "value", "正则规则已添加")
 
 
@@ -933,7 +948,7 @@ def release_dedup_route():
     if release_dedup(did):
         push_event("warning", f"已手动解除去重：{did}")
         return done("已解除该条去重", "success")
-    return done("解除失败：dedup_id 为空", "error", ok=False)
+    return done("解除失败：未找到对应的去重记录", "warning", ok=False)
 
 
 @app.post("/regex_test")
@@ -943,6 +958,8 @@ def regex_test():
         return gate
     text = request.form.get("text", "")
     try:
+        if len(text) > 8192:
+            text = text[:8192]
         analysis = analyze_message(text)
         code_detail = analysis.get("code_detail") or {}
         profile = build_profile(text, "")
@@ -1015,7 +1032,11 @@ def precheck():
         code_diag = code_rule_diagnostics()
         bad_code_rules = [x for x in code_diag if not x.get("ok")]
         add("码识别规则", not bad_code_rules, f"{len(code_diag)} 条" if not bad_code_rules else f"{len(bad_code_rules)} 条异常")
-        add("Redis", True, "正常")
+        try:
+            r.ping()
+            add("Redis", True, "正常")
+        except Exception:
+            add("Redis", False, "无法连接 Redis")
         result = {"ok": all(x["ok"] for x in checks), "checks": checks, "invalid_rules": invalid[:20]}
         if wants_json():
             return jsonify({"ok": True, "message": "启动自检完成", "kind": "success" if result["ok"] else "warning", "precheck_result": result})
@@ -1152,6 +1173,17 @@ def import_config():
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError("备份文件格式不正确")
+        for rule in payload.get("regex_rules") or []:
+            try:
+                _regex.compile(str(rule), _regex.I | _regex.M)
+            except Exception as e:
+                raise ValueError(f"正则规则无效：{str(rule)[:80]} - {e}")
+        for rule in payload.get("code_rules") or []:
+            pattern = str((rule or {}).get("pattern") or "")
+            try:
+                _regex.compile(pattern, _regex.I | _regex.M | _regex.S)
+            except Exception as e:
+                raise ValueError(f"码识别规则无效：{pattern[:80]} - {e}")
         imported = []
         matcher_rules_changed = False
         if mode != "rules_only" and "target_chat" in payload:
@@ -1186,6 +1218,7 @@ def import_config():
             imported.append("码识别规则")
         if matcher_rules_changed:
             invalidate_rule_cache()
+            migrate_known_regex_rules()
         if mode != "rules_only":
             d = payload.get("dedup") or {}
             mapping = {

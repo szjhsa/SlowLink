@@ -838,6 +838,6 @@ def release_dedup(dedup_id: str) -> bool:
     # Link keys are stored in meta.redis_keys when available; we cannot
     # reconstruct them without the original message_link, so rely on meta.
     keys.append("dedup:" + dedup_id)
-    r.delete(*[k for k in set(keys) if k])
+    deleted = r.delete(*[k for k in set(keys) if k])
     _push_recent({"action": "release", "dedup_id": dedup_id, "reason": "手动解除去重"})
-    return True
+    return bool(deleted)

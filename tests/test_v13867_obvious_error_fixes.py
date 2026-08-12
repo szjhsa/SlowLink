@@ -102,6 +102,7 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
         fake_redis_store.list_fails = lambda *a, **k: []
         fake_redis_store.list_hits = lambda *a, **k: []
         fake_redis_store.list_perf_events = lambda *a, **k: []
+        fake_redis_store.migrate_known_regex_rules = lambda *a, **k: 0
         fake_redis_store.log_line = lambda *a, **k: None
         fake_redis_store.push_event = lambda *a, **k: None
         fake_redis_store.sadd = lambda key, value: store.setdefault(key, set()).add(value)

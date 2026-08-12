@@ -132,6 +132,7 @@ class BotManager:
         self._target_entity_cache.clear()
         self._source_cache.clear()
         self._str_cache.clear()
+        self._dedup_settings = (0.0, True, "strict", 20, 20)
         self._monitor_filter_dirty = True
 
     async def _refresh_entity_cache(self, client: TelegramClient, force: bool = False):
@@ -1120,8 +1121,12 @@ class BotManager:
                 elif sec <= 300:
                     await asyncio.sleep(min(sec, 120))
                 # Queue for later recovery instead of losing the message
-                r.lpush("failed_queue", _json.dumps({"text": text, "target": target, "ts": int(time.time()), "reason": f"FloodWait {sec}s"}, ensure_ascii=False))
-                r.ltrim("failed_queue", 0, 99)
+                try:
+                    r.lpush("failed_queue", _json.dumps({"text": text, "target": target, "ts": int(time.time()), "reason": f"FloodWait {sec}s"}, ensure_ascii=False))
+                    r.ltrim("failed_queue", 0, 99)
+                except Exception as qe:
+                    add_fail({"stage": "failed_queue", "error": f"FloodWait 消息入队失败：{qe}"})
+                    push_event("error", f"失败消息入队失败：{qe}")
                 raise
             except Exception as e:
                 last_error = e
@@ -1136,8 +1141,9 @@ class BotManager:
         try:
             r.lpush("failed_queue", _json.dumps({"text": text, "target": target, "ts": int(time.time())}, ensure_ascii=False))
             r.ltrim("failed_queue", 0, 99)
-        except Exception:
-            pass
+        except Exception as qe:
+            add_fail({"stage": "failed_queue", "error": f"重试消息入队失败：{qe}"})
+            push_event("error", f"失败消息入队失败：{qe}")
         raise last_error or RuntimeError("send failed after retries")
 
     async def _retry_failed_queue(self, client: TelegramClient):
@@ -1238,7 +1244,9 @@ class BotManager:
         title = getattr(entity, "title", None) or getattr(entity, "first_name", None) or "未知"
         username = getattr(entity, "username", None)
         eid = getattr(entity, "id", None)
-        fill_id = f"-100{eid}" if eid else ""
+        is_channel = bool(getattr(entity, "broadcast", False))
+        is_supergroup = bool(getattr(entity, "megagroup", False))
+        fill_id = f"-100{eid}" if eid and (is_channel or is_supergroup) else (str(eid) if eid else "")
         msg = f"可访问：{title}"
         if username:
             msg += f" / @{username}"
