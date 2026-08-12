@@ -85,11 +85,22 @@ LEGACY_SAFE_WHITELIST_TRIGGER_RULE = (
     r"(?a:[A-Za-z0-9]{10})"
     r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
 )
-SAFE_WHITELIST_TRIGGER_RULE = (
+LEGACY_GUESS_WHITELIST_TRIGGER_RULE = (
     r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_"
     r"(?=[^\s*`]*[\u3400-\u9fff])"
     r"(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))"
     r"[^\s*`]+?"
+    r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
+)
+SAFE_WHITELIST_TRIGGER_RULE = (
+    r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_"
+    r"(?:"
+    r"(?a:[A-Za-z0-9]{10})"
+    r"|"
+    r"(?=[^\s*`]*[\u3400-\u9fff])"
+    r"(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))"
+    r"[^\s*`]+?"
+    r")"
     r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
 )
 LEGACY_REGISTRATION_ANNOUNCEMENT_RULE = (
@@ -108,6 +119,7 @@ KNOWN_REGEX_RULE_MIGRATIONS = {
     LEGACY_MASKED_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
     LEGACY_SYMBOL_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
     LEGACY_SAFE_WHITELIST_TRIGGER_RULE: SAFE_WHITELIST_TRIGGER_RULE,
+    LEGACY_GUESS_WHITELIST_TRIGGER_RULE: SAFE_WHITELIST_TRIGGER_RULE,
     LEGACY_REGISTRATION_ANNOUNCEMENT_RULE: SAFE_REGISTRATION_ANNOUNCEMENT_RULE,
     LEGACY_LOTTERY_ACTIVITY_RULE: SAFE_LOTTERY_ACTIVITY_RULE,
 }
