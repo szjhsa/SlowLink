@@ -65,7 +65,7 @@ class DuplicateLogAndPrizeQuantityV13870Tests(unittest.TestCase):
     def test_duplicate_code_branch_lets_push_event_write_docker_log_once(self):
         bot_runner = read(APP / "bot_runner.py")
         branch = re.search(
-            r"if not is_new:(?P<body>.*?return)\n\s+reserved_code_key = code_key",
+            r"if duplicate_identity:(?P<body>.*?return)",
             bot_runner,
             flags=re.S,
         )

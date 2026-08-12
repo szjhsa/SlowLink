@@ -35,7 +35,7 @@ class StabilityFixesV13861Tests(unittest.TestCase):
         start = bot_runner.index("if failed and not sent:")
         end = bot_runner.index('push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))', start)
         failed_branch = bot_runner[start:end]
-        self.assertIn("self._release_pending_dedup(reserved_code_key, dedup_profile)", failed_branch)
+        self.assertIn("self._release_pending_dedup(reserved_code_keys, dedup_profile)", failed_branch)
 
     def test_code_level_dedup_uses_code_minutes_setting(self):
         bot_runner = read(APP / "bot_runner.py")

@@ -158,7 +158,7 @@ class CpuAndDedupStabilityV13871Tests(unittest.TestCase):
         duplicate_branch = re.search(r"if duplicate:(?P<body>.*?return)", body, flags=re.S)
         self.assertIsNotNone(duplicate_branch)
         duplicate_body = duplicate_branch.group("body")
-        self.assertIn("self._release_pending_dedup(reserved_code_key)", duplicate_body)
+        self.assertIn("self._release_pending_dedup(reserved_code_keys)", duplicate_body)
         self.assertNotIn("dedup_profile", duplicate_body)
 
     def test_high_delay_warning_is_logged_once_through_push_event(self):

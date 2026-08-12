@@ -21,6 +21,7 @@ from link_builder import (
     build_entity_cache,
 )
 from matcher import analyze_message, get_text
+from code_rules import extract_code_identities
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
 import json as _json
 from telegram_session_lock import SESSION_LOCK
@@ -265,9 +266,11 @@ class BotManager:
         if LOG_VERBOSE:
             push_event(kind, message, extra)
 
-    def _release_pending_dedup(self, code_key: str = "", dedup_profile: dict | None = None) -> None:
+    def _release_pending_dedup(self, code_keys=(), dedup_profile: dict | None = None) -> None:
         try:
-            if code_key:
+            if isinstance(code_keys, str):
+                code_keys = [code_keys] if code_keys else []
+            for code_key in code_keys or []:
                 r.delete(code_key)
             dedup_id = str((dedup_profile or {}).get("dedup_id") or "")
             if dedup_id:
@@ -867,31 +870,47 @@ class BotManager:
                 _evt_msg2 = None
             link = build_message_link(chat, _evt_msg2, self._cached_str("public_link_domain")) if _evt_msg2 else ""
             dedup_enabled, mode, _dedup_other, code_minutes = self._cached_dedup_settings()
-            reserved_code_key = ""
+            reserved_code_keys = []
             dedup_profile = None
 
             # Layer 0: same invite code already seen -> block (even if text differs)
+            code_identities = []
             code_identity = code_detail.get("identity") or ""
             if code_identity:
-                code_key = "dedup:code:" + sha(code_identity)
+                code_identities.append(code_identity)
+            try:
+                for identity in extract_code_identities(text):
+                    if identity and identity not in code_identities:
+                        code_identities.append(identity)
+            except Exception:
+                pass
+
+            duplicate_identity = ""
+            if code_identities:
                 code_ttl = max(60, code_minutes * 60)
-                is_new = r.set(code_key, "1", ex=code_ttl, nx=True)
-                if not is_new:
-                    elapsed = time.monotonic() - t0
-                    perf["total_ms"] = int(elapsed * 1000)
-                    message = f"重复跳过：相同邀请码已转发（{code_identity[:16]}），内部耗时 {elapsed:.2f}s"
-                    add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": message, "perf": perf})
-                    self._record_perf_event(source_name, rule, link, "duplicate_code", perf, {"code": code_identity[:32]})
-                    event_message = f"{message}：{link}" if link else message
-                    push_event("info", event_message)
-                    return
-                reserved_code_key = code_key
+                for identity in code_identities:
+                    code_key = "dedup:code:" + sha(identity)
+                    is_new = r.set(code_key, "1", ex=code_ttl, nx=True)
+                    if not is_new:
+                        duplicate_identity = identity
+                        break
+                    reserved_code_keys.append(code_key)
+            if duplicate_identity:
+                self._release_pending_dedup(reserved_code_keys)
+                elapsed = time.monotonic() - t0
+                perf["total_ms"] = int(elapsed * 1000)
+                message = f"重复跳过：相同邀请码已转发（{duplicate_identity[:16]}），内部耗时 {elapsed:.2f}s"
+                add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": message, "perf": perf})
+                self._record_perf_event(source_name, rule, link, "duplicate_code", perf, {"code": duplicate_identity[:32]})
+                event_message = f"{message}：{link}" if link else message
+                push_event("info", event_message)
+                return
 
             if dedup_enabled:
                 duplicate, reason, dedup_profile = check_and_mark(text, link, None, mode, source_name)
                 perf["pre_dedup_ms"] = int((time.monotonic() - t0) * 1000)
                 if duplicate:
-                    self._release_pending_dedup(reserved_code_key)
+                    self._release_pending_dedup(reserved_code_keys)
                     elapsed = time.monotonic() - t0
                     perf["total_ms"] = int(elapsed * 1000)
                     add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": f"重复跳过：{reason}；耗时 {elapsed:.2f}s", "perf": perf})
@@ -961,7 +980,7 @@ class BotManager:
                     add_fail({"stage": "slow_forward", "error": f"内部慢转发 {elapsed:.2f}s，队列开始={qsize_at_start}，queue_wait={queue_wait_ms}ms，match={perf.get('match_ms',0)}ms，pre_dedup={perf.get('pre_dedup_ms',0)}ms，send_start={perf.get('before_send_ms',0)}ms{code_label}", "link": link, "perf": perf})
                     push_event("warning", f"内部慢转发 {elapsed:.2f}s：{source_name}{code_label}")
             if failed and not sent:
-                self._release_pending_dedup(reserved_code_key, dedup_profile)
+                self._release_pending_dedup(reserved_code_keys, dedup_profile)
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
                 self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
                 push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))

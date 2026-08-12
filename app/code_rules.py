@@ -4,10 +4,11 @@ from typing import Any
 import regex as _regex
 
 from redis_store import get_json, set_json
-from invite_path_codes import extract_first_invite_path_code
+from invite_path_codes import extract_first_invite_path_code, extract_invite_path_codes
 from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from telegram_start_links import (
     extract_first_telegram_start_register_renew_code,
+    extract_telegram_start_register_renew_codes,
 )
 
 CODE_RULES_KEY = "code_rules"
@@ -641,6 +642,78 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
 
 def extract_trigger_code_detail(text: str) -> dict[str, Any]:
     return extract_code_detail(text, trigger_only=True, safe_only=True)
+
+
+def extract_code_identities(text: str) -> list[str]:
+    """Return stable identities for every recognized code in one message."""
+    raw = text or ""
+    compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)
+    candidates = [raw, compact] if compact != raw else [raw]
+    identities: list[str] = []
+    seen: set[str] = set()
+
+    def push(identity: str) -> None:
+        if identity and identity not in seen:
+            seen.add(identity)
+            identities.append(identity)
+
+    for code in extract_telegram_start_register_renew_codes(raw):
+        push("strong_register_renew:" + code)
+    for code in extract_invite_path_codes(raw):
+        push("url_invite:" + code)
+
+    whitelist_rule = {
+        "name": "Whitelist 完整码",
+        "pattern": GUESS_WHITELIST_RE.pattern,
+        "fast": True,
+        "trigger": False,
+        "strict_context": False,
+    }
+    for pattern in (WHITELIST_RE, GUESS_WHITELIST_RE):
+        for candidate in candidates:
+            for match in pattern.finditer(candidate):
+                code = _clean_code_value(match.group(0))
+                if not code:
+                    continue
+                safe, _safe_reason = _is_safe_code_context(raw, code, whitelist_rule)
+                if safe:
+                    push(_canonical_code_identity(code, whitelist_rule, raw))
+
+    register_rule = {
+        "name": "Register/Renew 完整码",
+        "pattern": REGISTER_RENEW_RE.pattern,
+        "fast": True,
+        "trigger": False,
+        "strict_context": False,
+    }
+    for line in raw.splitlines():
+        for match in MARKDOWN_REGISTER_RENEW_RE.finditer(line):
+            suffix = re.sub(r"\*+", "", match.group(2) or "")
+            code = _clean_code_value((match.group(1) or "") + suffix)
+            if code and REGISTER_RENEW_RE.search(code):
+                push(_canonical_code_identity(code, register_rule, raw))
+        for match in HYPHEN_REGISTER_RENEW_RE.finditer(line):
+            code = _clean_code_value(match.group(0))
+            if code:
+                push(_canonical_code_identity(code, register_rule, raw))
+
+    for _idx, rule, cre in _compiled_rules():
+        for candidate in candidates:
+            try:
+                m = cre.search(candidate, timeout=CODE_RULE_MATCH_TIMEOUT_SECONDS)
+            except Exception:
+                continue
+            if not m:
+                continue
+            code = _clean_code_value(_pick_group(m, str(rule.get("group") or "0")))
+            if not code:
+                continue
+            safe, _safe_reason = _is_safe_code_context(raw, code, rule)
+            if safe:
+                push(_canonical_code_identity(code, rule, raw))
+            break
+
+    return identities
 
 
 def code_rule_diagnostics() -> list[dict[str, Any]]:

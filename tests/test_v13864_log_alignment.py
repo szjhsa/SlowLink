@@ -41,7 +41,7 @@ class LogAlignmentV13864Tests(unittest.TestCase):
     def test_duplicate_code_event_includes_link_for_docker_web_alignment(self):
         bot_runner = read(APP / "bot_runner.py")
         duplicate_branch = re.search(
-            r"if not is_new:(?P<body>.*?reserved_code_key = code_key)",
+            r"if duplicate_identity:(?P<body>.*?push_event\(\"info\", event_message\))",
             bot_runner,
             flags=re.S,
         )
