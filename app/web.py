@@ -19,7 +19,7 @@ from dedup import build_profile, clear_ttl_cache, list_dedup_recent, release_ded
 from bot_runner import manager
 from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
-from matcher import analyze_message, match_rule_details, rule_diagnostics, invalidate_rule_cache
+from matcher import analyze_message, rule_diagnostics, invalidate_rule_cache
 from code_rules import add_code_rule, code_rule_diagnostics, delete_code_rule, get_code_rules, reset_code_rules, save_code_rules, update_code_rule
 from redis_store import (
     add_fail,
@@ -576,9 +576,11 @@ def start_bot():
     if gate:
         return gate
     try:
+        msg = manager.start()
         set_value("listener_desired_state", "running")
-        return done(manager.start(), "success")
+        return done(msg, "success")
     except Exception as e:
+        set_value("listener_desired_state", "stopped")
         add_fail({"stage": "start_bot", "error": str(e)})
         return done(f"启动失败：{e}", "error", ok=False)
 
@@ -1152,12 +1154,15 @@ def import_config():
             if domain in {"t.me", "telegram.me"}:
                 set_value("public_link_domain", domain)
                 imported.append("公开链接格式")
-        set_items = [
-            ("monitor_chats", "monitor_chats", "监听列表"),
-            ("exclude_chats", "exclude_chats", "排除列表"),
-            ("exclude_texts", "exclude_texts", "排除文本"),
-            ("regex_rules", "regex_rules", "正则规则"),
-        ]
+        if mode == "rules_only":
+            set_items = [("regex_rules", "regex_rules", "正则规则")]
+        else:
+            set_items = [
+                ("monitor_chats", "monitor_chats", "监听列表"),
+                ("exclude_chats", "exclude_chats", "排除列表"),
+                ("exclude_texts", "exclude_texts", "排除文本"),
+                ("regex_rules", "regex_rules", "正则规则"),
+            ]
         for redis_key, json_key, label in set_items:
             items = payload.get(json_key)
             if isinstance(items, list):

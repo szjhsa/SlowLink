@@ -817,6 +817,8 @@ class BotManager:
             "telegram_delay_sec": round(telegram_delay_sec, 3),
             "queue_type": queue_type,
         }
+        reserved_code_keys = []
+        dedup_profile = None
         try:
             try:
                 chat = event.chat
@@ -870,8 +872,6 @@ class BotManager:
                 _evt_msg2 = None
             link = build_message_link(chat, _evt_msg2, self._cached_str("public_link_domain")) if _evt_msg2 else ""
             dedup_enabled, mode, _dedup_other, code_minutes = self._cached_dedup_settings()
-            reserved_code_keys = []
-            dedup_profile = None
 
             # Layer 0: same invite code already seen -> block (even if text differs)
             code_identities = []
@@ -886,7 +886,8 @@ class BotManager:
                 pass
 
             duplicate_identity = ""
-            if code_identities:
+            code_dedup_enabled = dedup_enabled and code_minutes > 0
+            if code_identities and code_dedup_enabled:
                 code_ttl = max(60, code_minutes * 60)
                 for identity in code_identities:
                     normalized_identity = normalize_code_identity(identity)
@@ -986,10 +987,12 @@ class BotManager:
                 self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
                 push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
         except FloodWaitError as e:
+            self._release_pending_dedup(reserved_code_keys, dedup_profile)
             add_fail({"stage": "floodwait", "error": f"FloodWait {e.seconds}s；不再长时间卡住转发队列"})
             if int(getattr(e, "seconds", 0) or 0) <= 3:
                 await asyncio.sleep(int(e.seconds))
         except Exception as e:
+            self._release_pending_dedup(reserved_code_keys, dedup_profile)
             add_fail({"stage": "handle_message", "error": str(e)})
             push_event("error", f"处理消息失败：{e}")
 

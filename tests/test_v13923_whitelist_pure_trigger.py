@@ -27,8 +27,8 @@ class WhitelistPureTriggerV13923Tests(unittest.TestCase):
         self.assertIn(f'APP_VERSION = "{EXPECTED_VERSION}"', read(APP / "config.py"))
 
     def test_combined_whitelist_rule_matches_pure_and_guess_codes(self):
-        redis_store = load_redis_store(FakeRedisClient(set()))
-        compiled = re.compile(redis_store.SAFE_WHITELIST_TRIGGER_RULE, re.I | re.M)
+        _redis_store = load_redis_store(FakeRedisClient(set()))
+        compiled = re.compile(_redis_store.SAFE_WHITELIST_TRIGGER_RULE, re.I | re.M)
 
         self.assertIsNotNone(compiled.search(PURE_SAMPLE))
         for code in WHITELIST_CODES:
@@ -64,7 +64,6 @@ class WhitelistPureTriggerV13923Tests(unittest.TestCase):
                 self.assertIsNotNone(compiled.search(code))
 
     def test_legacy_pure_whitelist_rule_still_migrates(self):
-        redis_store = load_redis_store(FakeRedisClient(set()))
         client = FakeRedisClient({CURRENT_WHITELIST_RULE})
         store = load_redis_store(client)
 
