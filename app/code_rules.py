@@ -393,6 +393,18 @@ def _is_safe_code_context(text: str, code: str, rule: dict[str, Any]) -> tuple[b
     """
     raw = _normalize_text(text)
     code = code or ""
+    rule_name = str(rule.get("name") or "")
+    if (
+        any(k in rule_name for k in ("邀请码", "注册码", "注册代码"))
+        and re.fullmatch(r"\d{1,5}", re.sub(r"[^A-Za-z0-9]", "", code) or "")
+        and re.search(
+            r"(?:邀请码|注册码|注册代码)[:：\s]*"
+            + re.escape(re.sub(r"[^A-Za-z0-9]", "", code))
+            + r"\s*(?:个|张|组|条|枚|份)(?:\s|$)",
+            raw,
+        )
+    ):
+        return False, "疑似注册码数量，不作为完整码去重"
     if code and re.search(re.escape(code) + r"(?:-[^\s-]+)*-(?:Register|Renew)_", raw, re.I):
         return False, "疑似不完整 Register/Renew 前缀"
     if (
@@ -451,6 +463,13 @@ def _canonical_code_identity(code: str, rule: dict[str, Any], raw_text: str = ""
     if not value:
         return ""
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", value)
+    rule_name = str(rule.get("name") or "")
+    rule_pattern = str(rule.get("pattern") or "")
+    is_register_rule = (
+        ("Register" in rule_pattern and "Renew" in rule_pattern)
+        or "register/renew" in rule_name.lower()
+        or rule_pattern == "telegram_bot_start_register_renew"
+    )
     if (
         WHITELIST_RE.search(compact)
         or WHITELIST_RE.search(raw_text or "")
@@ -458,12 +477,9 @@ def _canonical_code_identity(code: str, rule: dict[str, Any], raw_text: str = ""
         or GUESS_WHITELIST_RE.search(raw_text or "")
     ):
         return "strong_whitelist:" + compact
-    if (
-        REGISTER_RENEW_RE.search(compact)
-        or REGISTER_RENEW_RE.search(raw_text or "")
-        or HYPHEN_REGISTER_RENEW_RE.search(compact)
-        or HYPHEN_REGISTER_RENEW_RE.search(raw_text or "")
-    ):
+    strong_self = REGISTER_RENEW_RE.search(compact) or HYPHEN_REGISTER_RENEW_RE.search(compact)
+    strong_raw = REGISTER_RENEW_RE.search(raw_text or "") or HYPHEN_REGISTER_RENEW_RE.search(raw_text or "")
+    if strong_self or (is_register_rule and strong_raw):
         # Register/Renew 的随机码可能大小写敏感，保留原始大小写，只清理空白。
         return "strong_register_renew:" + compact
     if re.match(r"(?i)^INV-[A-Z0-9]+(?:-[A-Z0-9]+)+$", compact):
