@@ -80,6 +80,16 @@ def _save_meta(meta: dict[str, Any], ttl_seconds: int) -> None:
     r.setex(_meta_key(meta["dedup_id"]), ttl_seconds, json.dumps(meta, ensure_ascii=False))
 
 
+def _release_new_keys(keys: list[str]) -> None:
+    keys = [k for k in keys or [] if k]
+    if not keys:
+        return
+    try:
+        r.delete(*keys)
+    except Exception:
+        pass
+
+
 def _push_recent(item: dict[str, Any], limit: int = 120) -> None:
     item = dict(item)
     item.setdefault("time", _ts())
@@ -664,7 +674,25 @@ def check_and_mark(
     results = pipe.execute()
 
     content_is_new = results[0]
+    result_index = 1
+    link_is_new = results[result_index] if message_link else True
+    result_index += 1 if message_link else 0
+    template_new: list[bool] = []
+    for _template_key in template_keys:
+        template_new.append(bool(results[result_index]))
+        result_index += 1
+
+    new_keys = []
+    if content_is_new:
+        new_keys.append(content_key)
+    if message_link and link_is_new:
+        new_keys.append(link_key)
+    for template_key, template_is_new in zip(template_keys, template_new):
+        if template_is_new:
+            new_keys.append(template_key)
+
     if not content_is_new:
+        _release_new_keys(new_keys)
         if profile.get("lottery_identity"):
             reason = f"相同抽奖 ID 重复（{real_ttl_minutes}分钟内）"
         else:
@@ -672,20 +700,14 @@ def check_and_mark(
         _record_duplicate(dedup_id, profile, reason, source, message_link, ttl_seconds)
         return True, reason, profile
 
-    result_index = 1
-    link_is_new = results[result_index] if message_link else True
-    result_index += 1 if message_link else 0
-
     if not link_is_new:
+        _release_new_keys(new_keys)
         reason = f"同一条原消息链接重复（{real_ttl_minutes}分钟内）"
         _record_duplicate(dedup_id, profile, reason, source, message_link, ttl_seconds)
         return True, reason, profile
 
-    template_new: list[bool] = []
     for template_index, template_key in enumerate(template_keys):
-        template_is_new = results[result_index]
-        result_index += 1
-        template_new.append(template_is_new)
+        template_is_new = template_new[template_index]
         if not template_is_new:
             existing_id = r.get(template_key) or dedup_id
             explicit_id_conflict = (
@@ -694,6 +716,7 @@ def check_and_mark(
                 and existing_id != dedup_id
             )
             if not explicit_id_conflict:
+                _release_new_keys(new_keys)
                 reason = "同一抽奖的不同模板重复（10分钟内）"
                 _add_lottery_collision({
                     "identity": effective_template_identities[template_index],

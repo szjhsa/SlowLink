@@ -706,13 +706,21 @@ def refresh_dialogs():
         return gate
     try:
         old_dialogs = get_json("dialog_cache", []) or []
+        old_entity_cache = dict(getattr(manager, "entity_cache", {}) or {})
+        old_entity_refreshed_ts = getattr(manager, "_entity_cache_refreshed_ts", 0.0)
         dialogs = run_async(manager.list_dialogs(force=True))
         if not dialogs:
+            manager.entity_cache = old_entity_cache
+            manager._entity_cache_refreshed_ts = old_entity_refreshed_ts
+            manager._monitor_filter_dirty = True
             add_fail({"stage": "refresh_dialogs", "error": "get_dialogs 返回 0 个群/频道，已保留旧缓存，不再覆盖为空"})
             return done("刷新失败：没有拉到任何群/频道。旧列表已保留，请看失败记录或 docker logs。", "warning", ok=False)
         old_count = len(old_dialogs)
         new_count = len(dialogs)
         if should_keep_existing_dialog_cache(old_count=old_count, new_count=new_count):
+            manager.entity_cache = old_entity_cache
+            manager._entity_cache_refreshed_ts = old_entity_refreshed_ts
+            manager._monitor_filter_dirty = True
             message = f"刷新结果疑似不完整：旧列表 {old_count} 个，本次只拉到 {new_count} 个。已保留旧列表，请稍后再试。"
             add_fail({"stage": "refresh_dialogs", "error": message}, emit_log=False)
             push_event("warning", message)

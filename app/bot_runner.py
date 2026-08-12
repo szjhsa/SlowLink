@@ -72,6 +72,7 @@ class BotManager:
         self._reconnect_requested = False
         self._reconnect_reason = ""
         self._dedup_settings = (0.0, True, "strict", 20, 20)  # (ts, enabled, mode, other_minutes, code_minutes)
+        self._pending_duplicate_events: dict[str, list] = {}
         self._monitor_peer_ids = frozenset()
         self._monitor_filter_complete = False
         self._monitor_filter_dirty = True
@@ -277,6 +278,33 @@ class BotManager:
                 release_dedup(dedup_id)
         except Exception:
             pass
+
+    def _remember_pending_duplicate(self, code_key: str, event, meta: dict) -> None:
+        if not code_key:
+            return
+        events = self._pending_duplicate_events.setdefault(code_key, [])
+        if len(events) < 50:
+            events.append((event, dict(meta)))
+
+    def _requeue_pending_duplicates(self, code_keys=()) -> None:
+        if isinstance(code_keys, str):
+            code_keys = [code_keys] if code_keys else []
+        for code_key in code_keys or []:
+            for event, meta in self._pending_duplicate_events.pop(code_key, []):
+                meta = dict(meta)
+                meta["enqueue_ts"] = time.time()
+                meta["event"] = event
+                if self.priority_queue:
+                    try:
+                        self.priority_queue.put_nowait(meta)
+                    except asyncio.QueueFull:
+                        pass
+
+    def _clear_pending_duplicates(self, code_keys=()) -> None:
+        if isinstance(code_keys, str):
+            code_keys = [code_keys] if code_keys else []
+        for code_key in code_keys or []:
+            self._pending_duplicate_events.pop(code_key, None)
 
     def is_running(self) -> bool:
         return bool(self.thread and self.thread.is_alive())
@@ -886,6 +914,7 @@ class BotManager:
                 pass
 
             duplicate_identity = ""
+            duplicate_code_key = ""
             code_dedup_enabled = dedup_enabled and code_minutes > 0
             if code_identities and code_dedup_enabled:
                 code_ttl = max(60, code_minutes * 60)
@@ -895,9 +924,17 @@ class BotManager:
                     is_new = r.set(code_key, "1", ex=code_ttl, nx=True)
                     if not is_new:
                         duplicate_identity = normalized_identity
+                        duplicate_code_key = code_key
                         break
                     reserved_code_keys.append(code_key)
             if duplicate_identity:
+                self._remember_pending_duplicate(duplicate_code_key, event, {
+                    "event": event,
+                    "receive_ts": receive_ts,
+                    "enqueue_ts": enqueue_ts,
+                    "message_ts": message_ts,
+                    "queue_type": "priority",
+                })
                 self._release_pending_dedup(reserved_code_keys)
                 elapsed = time.monotonic() - t0
                 perf["total_ms"] = int(elapsed * 1000)
@@ -913,6 +950,7 @@ class BotManager:
                 perf["pre_dedup_ms"] = int((time.monotonic() - t0) * 1000)
                 if duplicate:
                     self._release_pending_dedup(reserved_code_keys)
+                    self._requeue_pending_duplicates(reserved_code_keys)
                     elapsed = time.monotonic() - t0
                     perf["total_ms"] = int(elapsed * 1000)
                     add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": f"重复跳过：{reason}；耗时 {elapsed:.2f}s", "perf": perf})
@@ -964,6 +1002,7 @@ class BotManager:
 
             if sent:
                 self._flow_counters["forwarded"] += 1
+                self._clear_pending_duplicates(reserved_code_keys)
                 status = "已转发：" + ", ".join(sent) + f"；内部耗时 {elapsed:.2f}s"
                 if telegram_delay_sec >= 2:
                     status += f"；Telegram推送延迟 {telegram_delay_sec:.1f}s"
@@ -983,16 +1022,19 @@ class BotManager:
                     push_event("warning", f"内部慢转发 {elapsed:.2f}s：{source_name}{code_label}")
             if failed and not sent:
                 self._release_pending_dedup(reserved_code_keys, dedup_profile)
+                self._requeue_pending_duplicates(reserved_code_keys)
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
                 self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
                 push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
         except FloodWaitError as e:
             self._release_pending_dedup(reserved_code_keys, dedup_profile)
+            self._requeue_pending_duplicates(reserved_code_keys)
             add_fail({"stage": "floodwait", "error": f"FloodWait {e.seconds}s；不再长时间卡住转发队列"})
             if int(getattr(e, "seconds", 0) or 0) <= 3:
                 await asyncio.sleep(int(e.seconds))
         except Exception as e:
             self._release_pending_dedup(reserved_code_keys, dedup_profile)
+            self._requeue_pending_duplicates(reserved_code_keys)
             add_fail({"stage": "handle_message", "error": str(e)})
             push_event("error", f"处理消息失败：{e}")
 

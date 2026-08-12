@@ -396,7 +396,10 @@ def _is_safe_code_context(text: str, code: str, rule: dict[str, Any]) -> tuple[b
     rule_name = str(rule.get("name") or "")
     if (
         any(k in rule_name for k in ("邀请码", "注册码", "注册代码"))
-        and re.fullmatch(r"\d{1,5}", re.sub(r"[^A-Za-z0-9]", "", code) or "")
+        and re.fullmatch(
+            r"(?:\d{1,5}|[xX]\d{1,4})",
+            re.sub(r"[^A-Za-z0-9]", "", code) or "",
+        )
         and re.search(
             r"(?:邀请码|注册码|注册代码)[:：\s]*"
             + re.escape(re.sub(r"[^A-Za-z0-9]", "", code))

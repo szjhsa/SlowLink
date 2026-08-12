@@ -138,6 +138,15 @@ class FakeRedis:
     def setex(self, key, seconds, value):
         return self.set(key, value, ex=seconds)
 
+    def delete(self, *keys):
+        removed = 0
+        for key in keys:
+            removed += int(key in self.values or key in self.lists)
+            self.values.pop(key, None)
+            self.lists.pop(key, None)
+            self.expires.pop(key, None)
+        return removed
+
     def lpush(self, key, value):
         self.lists.setdefault(key, []).insert(0, value)
         return len(self.lists[key])
