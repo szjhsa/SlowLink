@@ -16,6 +16,11 @@ SAMPLES = [
     "Peach-register-dvCi74pyjNDEH6K-t5uiFXU-gKkxP-Q0n",
     "Cc-register-Ugln数字字母fY-IUwx-Cax-j6rYe",
 ]
+FALSE_POSITIVE = (
+    "跳过恢复用户:#id7383556383-Register-❎已有此账户名-"
+    "❎或检查有无特殊字符-❎或emby服务器连接不通-"
+    "跳过恢复用户:#id7411314484-wangbo-❎已有此账户名"
+)
 
 
 def load_real_matcher():
@@ -87,6 +92,18 @@ class HyphenRegisterCodesV13917Tests(unittest.TestCase):
 
         self.assertTrue(result["matched"])
         self.assertFalse(result["usage_notice"])
+
+    def test_long_recovery_message_is_not_mistaken_for_hyphen_code(self):
+        code_rules, _saved = load_code_rules_with_fake_redis()
+        matcher = load_real_matcher()
+
+        detail = code_rules.extract_code_detail(FALSE_POSITIVE)
+        trigger = code_rules.extract_trigger_code_detail(FALSE_POSITIVE)
+        result = matcher.match_rule_details(FALSE_POSITIVE)
+
+        self.assertNotIn("跳过恢复用户", str(detail.get("code") or ""))
+        self.assertFalse(bool(trigger.get("can_trigger")))
+        self.assertFalse(result["matched"])
 
     def test_hyphen_code_fingerprints_are_in_register_renew_family(self):
         code_rules, _saved = load_code_rules_with_fake_redis()
