@@ -19,7 +19,7 @@ from dedup import build_profile, clear_ttl_cache, list_dedup_recent, release_ded
 from bot_runner import manager
 from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
-from matcher import match_rule_details, rule_diagnostics, invalidate_rule_cache
+from matcher import analyze_message, match_rule_details, rule_diagnostics, invalidate_rule_cache
 from code_rules import add_code_rule, code_rule_diagnostics, delete_code_rule, get_code_rules, reset_code_rules, save_code_rules, update_code_rule
 from redis_store import (
     add_fail,
@@ -933,26 +933,31 @@ def regex_test():
         return gate
     text = request.form.get("text", "")
     try:
-        details = match_rule_details(text)
+        analysis = analyze_message(text)
+        code_detail = analysis.get("code_detail") or {}
         profile = build_profile(text, "")
         ttl = ttl_minutes_for_profile(profile, None)
         diagnostics = rule_diagnostics()
         invalid = [x for x in diagnostics if not x.get("ok")]
         result = {
-            "matched": details.get("matched"),
-            "rule": details.get("rule"),
-            "candidate": details.get("candidate"),
-            "usage_notice": details.get("usage_notice"),
-            "closed_register_notice": details.get("closed_register_notice"),
-            "registration_success_notice": details.get("registration_success_notice"),
-            "excluded_text_notice": details.get("excluded_text_notice"),
-            "excluded_keyword": details.get("excluded_keyword", ""),
-            "code_detected": details.get("code_detected"),
-            "code_rule": details.get("code_rule", ""),
-            "code_note": details.get("code_note", ""),
-            "original": details.get("original", "")[:1200],
-            "normalized": details.get("normalized", "")[:1200],
-            "compact": details.get("compact", "")[:1200],
+            "matched": analysis.get("matched"),
+            "rule": analysis.get("rule"),
+            "candidate": (
+                "码识别规则"
+                if str(analysis.get("rule") or "").startswith("code_trigger:")
+                else "原始文本"
+            ),
+            "usage_notice": analysis.get("usage_notice"),
+            "closed_register_notice": analysis.get("closed_register_notice"),
+            "registration_success_notice": analysis.get("registration_success_notice"),
+            "excluded_text_notice": analysis.get("excluded_text_notice", False),
+            "excluded_keyword": analysis.get("excluded_keyword", ""),
+            "code_detected": bool(code_detail),
+            "code_rule": code_detail.get("name", ""),
+            "code_note": code_detail.get("safe_reason", ""),
+            "original": text[:1200],
+            "normalized": analysis.get("normalized", "")[:1200],
+            "compact": analysis.get("compact", "")[:1200],
             "activity": profile.get("activity"),
             "core": profile.get("core", "")[:800],
             "code_identity": profile.get("code_identity", ""),

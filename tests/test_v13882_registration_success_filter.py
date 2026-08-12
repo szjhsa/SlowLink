@@ -139,7 +139,7 @@ class RegistrationSuccessFilterV13882Tests(unittest.TestCase):
         web_source = (APP / "web.py").read_text(encoding="utf-8-sig")
 
         self.assertIn(
-            '"registration_success_notice": details.get("registration_success_notice")',
+            '"registration_success_notice": analysis.get("registration_success_notice")',
             web_source,
         )
 

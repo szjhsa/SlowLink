@@ -175,6 +175,7 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
             "matcher": types.ModuleType("matcher"),
             "code_rules": types.ModuleType("code_rules"),
         }
+        fake_modules["matcher"].analyze_message = lambda *a, **k: {}
         fake_modules["matcher"].match_rule_details = lambda *a, **k: {}
         fake_modules["matcher"].rule_diagnostics = lambda *a, **k: []
         fake_modules["matcher"].invalidate_rule_cache = lambda *a, **k: None

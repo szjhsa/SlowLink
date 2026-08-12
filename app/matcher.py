@@ -71,7 +71,7 @@ REGISTRATION_STATUS_RE = re.compile(
     re.I,
 )
 EXHAUSTED_REGISTER_RE = re.compile(
-    r"(?:剩余可注册(?:人数)?|剩余名额|可注册名额)\s*[|｜:：]\s*"
+    r"(?:剩余可注册(?:人数)?|剩余名额|可注册名额)\s*(?:[|｜:：]\s*)?"
     r"(?:\*\*)?\s*0\s*(?:\*\*)?",
     re.I,
 )

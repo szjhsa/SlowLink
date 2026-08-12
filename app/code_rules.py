@@ -491,6 +491,23 @@ def _canonical_code_identity(code: str, rule: dict[str, Any], raw_text: str = ""
         return "field_code:" + compact
     return "code:" + compact
 
+
+def normalize_code_identity(identity: str) -> str:
+    """Normalize the value part of a code identity for case-insensitive dedup."""
+    prefix, sep, value = (identity or "").rpartition(":")
+    if sep and prefix in {
+        "strong_register_renew",
+        "strong_whitelist",
+        "url_invite",
+        "url_code",
+        "field_code",
+        "code",
+        "invite_code",
+    }:
+        return prefix + ":" + value.lower()
+    return identity or ""
+
+
 def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool = True) -> dict[str, Any]:
     raw = text or ""
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)

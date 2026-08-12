@@ -21,7 +21,7 @@ from link_builder import (
     build_entity_cache,
 )
 from matcher import analyze_message, get_text
-from code_rules import extract_code_identities
+from code_rules import extract_code_identities, normalize_code_identity
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
 import json as _json
 from telegram_session_lock import SESSION_LOCK
@@ -889,19 +889,20 @@ class BotManager:
             if code_identities:
                 code_ttl = max(60, code_minutes * 60)
                 for identity in code_identities:
-                    code_key = "dedup:code:" + sha(identity)
+                    normalized_identity = normalize_code_identity(identity)
+                    code_key = "dedup:code:" + sha(normalized_identity)
                     is_new = r.set(code_key, "1", ex=code_ttl, nx=True)
                     if not is_new:
-                        duplicate_identity = identity
+                        duplicate_identity = normalized_identity
                         break
                     reserved_code_keys.append(code_key)
             if duplicate_identity:
                 self._release_pending_dedup(reserved_code_keys)
                 elapsed = time.monotonic() - t0
                 perf["total_ms"] = int(elapsed * 1000)
-                message = f"重复跳过：相同邀请码已转发（{duplicate_identity[:16]}），内部耗时 {elapsed:.2f}s"
+                message = f"重复跳过：相同邀请码已转发（{duplicate_identity[:160]}），内部耗时 {elapsed:.2f}s"
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": message, "perf": perf})
-                self._record_perf_event(source_name, rule, link, "duplicate_code", perf, {"code": duplicate_identity[:32]})
+                self._record_perf_event(source_name, rule, link, "duplicate_code", perf, {"code": duplicate_identity[:160]})
                 event_message = f"{message}：{link}" if link else message
                 push_event("info", event_message)
                 return
