@@ -41,14 +41,14 @@ class DependencyBuildFreshnessV13897Tests(unittest.TestCase):
         source = LIBRARY.read_text(encoding="utf-8-sig")
         body = function_body(source, "deploy_application")
         build_commands = re.findall(
-            r'docker compose build(?: --no-cache)? "\$APP_SERVICE"',
+            r'compose build(?: --no-cache)? "\$APP_SERVICE"',
             body,
         )
 
         self.assertGreaterEqual(len(build_commands), 1)
         self.assertEqual(
             build_commands[0],
-            'docker compose build --no-cache "$APP_SERVICE"',
+            'compose build --no-cache "$APP_SERVICE"',
         )
 
 

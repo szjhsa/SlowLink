@@ -64,7 +64,7 @@ class CpuRootCauseMitigationV13874Tests(unittest.TestCase):
         self.assertIn("faulthandler.register(signal.SIGUSR1", source)
 
     def test_watchdog_captures_stack_flow_and_thread_state_without_process_args(self):
-        source = read(ROOT / "ops" / "slowlink_watchdog.sh")
+        source = read(ROOT / "deploy" / "ops" / "slowlink_watchdog.sh")
 
         self.assertIn("kill -USR1 1", source)
         self.assertIn("listener_flow_stats", source)
@@ -76,7 +76,7 @@ class CpuRootCauseMitigationV13874Tests(unittest.TestCase):
         self.assertNotIn("docker restart slowlink_redis", source)
 
     def test_manage_status_displays_latest_message_flow(self):
-        source = read(ROOT / "manage.sh")
+        source = read(ROOT / "deploy" / "manage.sh")
 
         self.assertIn("listener_flow_stats", source)
         self.assertIn("最近消息流", source)

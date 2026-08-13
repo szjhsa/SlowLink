@@ -3,7 +3,7 @@
 ## 安装与更新
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/deploy/install.sh | sudo bash
 ```
 
 脚本从 `/dev/tty` 读取菜单输入，适用于管道运行。安装目录固定为 `/opt/slowlink`，支持 Ubuntu 和 Debian，并在缺少 Docker 时自动安装 Docker Engine 与 Docker Compose 插件。
@@ -11,8 +11,9 @@ curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh | s
 更新流程从 GitHub 获取最新正式 Release，下载 full 包和 `SHA256SUMS.txt`，验证 SHA-256 和归档内容后才复制程序文件。更新应用时分开执行：
 
 ```bash
-docker compose build --no-cache app
-docker compose up -d --no-deps app
+cd /opt/slowlink/deploy
+docker compose --env-file ../.env build --no-cache app
+docker compose --env-file ../.env up -d --no-deps app
 ```
 
 更新不会执行 `docker compose down`，不会停止 `slowlink_redis`，不会覆盖 `.env`、`data`、Telegram Session、Redis 数据或用户配置。HTTPS 模式下，域名未变化且 `slowlink_caddy` 正常运行时不会重启 Caddy。
@@ -22,12 +23,12 @@ docker compose up -d --no-deps app
 ## 日常管理
 
 ```bash
-sudo /opt/slowlink/manage.sh status
-sudo /opt/slowlink/manage.sh logs
-sudo /opt/slowlink/manage.sh restart
-sudo /opt/slowlink/manage.sh update
-sudo /opt/slowlink/manage.sh web
-sudo /opt/slowlink/manage.sh backup
+sudo /opt/slowlink/deploy/manage.sh status
+sudo /opt/slowlink/deploy/manage.sh logs
+sudo /opt/slowlink/deploy/manage.sh restart
+sudo /opt/slowlink/deploy/manage.sh update
+sudo /opt/slowlink/deploy/manage.sh web
+sudo /opt/slowlink/deploy/manage.sh backup
 ```
 
 `status` 显示版本、应用健康状态、Redis 状态、监听期望状态、监听运行状态、Telegram 登录状态、转发目标、Session 文件数量和 CPU watchdog 状态。
@@ -47,13 +48,13 @@ sudo /opt/slowlink/manage.sh backup
 ## 卸载
 
 ```bash
-sudo /opt/slowlink/manage.sh uninstall
+sudo /opt/slowlink/deploy/manage.sh uninstall
 ```
 
 普通卸载只移除 `slowlink_app`、`slowlink_caddy` 和 CPU watchdog，保留配置、Telegram Session、Redis 容器、Redis 数据卷、数据库和 Caddy 证书卷。
 
 ```bash
-sudo /opt/slowlink/manage.sh purge
+sudo /opt/slowlink/deploy/manage.sh purge
 ```
 
 彻底删除会先要求从 `/dev/tty` 输入完全一致的 `PURGE`。确认前不会停止任何服务。确认后只删除 SlowLink 自有应用/Caddy/Redis 容器、已验证的数据卷、watchdog 和 `/opt/slowlink`。
@@ -78,7 +79,7 @@ systemctl status slowlink-watchdog.service
 
 ## CPU Watchdog 与监听恢复
 
-`slowlink-watchdog.service` 继续使用现有 `ops/slowlink_watchdog.sh`。只有应用容器连续达到配置的高 CPU 条件才会重启 `slowlink_app`，不会重启 Redis 或其他服务。
+`slowlink-watchdog.service` 继续使用现有 `deploy/ops/slowlink_watchdog.sh`。只有应用容器连续达到配置的高 CPU 条件才会重启 `slowlink_app`，不会重启 Redis 或其他服务。
 
 监听期望状态保存在 Redis 的 `listener_desired_state`。应用容器启动后由现有业务代码读取该状态并决定是否恢复监听，安装与更新脚本不修改这个键。
 

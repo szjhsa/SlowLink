@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-OPS = ROOT / "ops"
+OPS = ROOT / "deploy" / "ops"
 EXPECTED_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()
 
 

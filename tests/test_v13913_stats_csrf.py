@@ -43,7 +43,7 @@ class StatsAndCsrfV13913Tests(unittest.TestCase):
         self.assertIn("input.value = CSRF_TOKEN", index)
 
     def test_flask_wtf_dependency_is_pinned(self):
-        requirements = read(ROOT / "requirements.txt")
+        requirements = read(ROOT / "deploy" / "requirements.txt")
         self.assertIn("Flask-WTF==", requirements)
 
 

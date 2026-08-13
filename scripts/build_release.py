@@ -12,22 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION_RE = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
 FULL_PATHS = (
     ".dockerignore",
-    ".env.example",
     ".gitattributes",
     ".gitignore",
-    "CHANGELOG.md",
-    "Dockerfile",
     "LICENSE",
     "README.md",
     "VERSION",
     "app",
-    "docker-compose.yml",
-    "install.sh",
-    "manage.sh",
-    "uninstall.sh",
-    "ops",
-    "requirements.txt",
-    "scripts/distribution_lib.sh",
+    "deploy",
+    "docs",
+    "scripts",
 )
 FORBIDDEN_PARTS = {
     ".git",
@@ -74,7 +67,7 @@ def expected_asset_names(version: str) -> tuple[str, str, str, str]:
     )
 
 
-def extract_changelog(version: str, changelog: Path = ROOT / "CHANGELOG.md") -> str:
+def extract_changelog(version: str, changelog: Path = ROOT / "docs" / "CHANGELOG.md") -> str:
     normalized = validate_version(version)
     text = changelog.read_text(encoding="utf-8")
     marker = f"## [{normalized}]"

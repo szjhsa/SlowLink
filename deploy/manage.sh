@@ -17,7 +17,7 @@ fi
 
 usage() {
   cat <<'EOF'
-用法：sudo /opt/slowlink/manage.sh COMMAND
+用法：sudo /opt/slowlink/deploy/manage.sh COMMAND
 
   status     查看版本、容器、Redis、监听和 watchdog 状态
   logs       实时查看 slowlink_app 日志
@@ -68,8 +68,7 @@ show_status() {
 }
 
 restart_app() {
-  cd "$INSTALL_DIR"
-  docker compose restart app || die "slowlink_app 重启失败"
+  docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" restart app || die "slowlink_app 重启失败"
   if ! wait_for_app_health 90; then
     show_diagnostics
     die "slowlink_app 重启后未通过健康检查"
@@ -136,7 +135,6 @@ EOF
     esac
   done
 
-  cd "$INSTALL_DIR"
   if (
     save_web_access "$selected_mode" "$selected_port" "$selected_domain" &&
     SLOWLINK_WEB_MODE=$selected_mode &&
@@ -144,7 +142,7 @@ EOF
     SLOWLINK_WEB_PORT=$selected_port &&
     SLOWLINK_DOMAIN=$selected_domain &&
     export SLOWLINK_WEB_MODE SLOWLINK_BIND_HOST SLOWLINK_WEB_PORT SLOWLINK_DOMAIN &&
-    docker compose up -d --no-deps "$APP_SERVICE" &&
+    docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" up -d --no-deps "$APP_SERVICE" &&
     wait_for_app_health 90 &&
     ensure_web_proxy &&
     verify_installation
@@ -160,7 +158,7 @@ EOF
   SLOWLINK_WEB_PORT=$original_web_port
   SLOWLINK_DOMAIN=$original_domain
   export SLOWLINK_WEB_MODE SLOWLINK_BIND_HOST SLOWLINK_WEB_PORT SLOWLINK_DOMAIN
-  if docker compose up -d --no-deps "$APP_SERVICE" && wait_for_app_health 90 && ensure_web_proxy && verify_installation; then
+  if docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" up -d --no-deps "$APP_SERVICE" && wait_for_app_health 90 && ensure_web_proxy && verify_installation; then
     die "切换失败，已恢复原网页访问方式"
   fi
   show_diagnostics
@@ -169,7 +167,7 @@ EOF
 
 download_installer() {
   installer_output=$1
-  installer_url="https://raw.githubusercontent.com/$REPO/main/install.sh"
+  installer_url="https://raw.githubusercontent.com/$REPO/main/deploy/install.sh"
   if [ -n "${GITHUB_TOKEN:-}" ]; then
     curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$installer_url" -o "$installer_output"
   else
@@ -249,10 +247,10 @@ case "$1" in
     backup_runtime
     ;;
   uninstall)
-    exec "$INSTALL_DIR/uninstall.sh"
+    exec "$INSTALL_DIR/deploy/uninstall.sh"
     ;;
   purge)
-    exec "$INSTALL_DIR/uninstall.sh" --purge
+    exec "$INSTALL_DIR/deploy/uninstall.sh" --purge
     ;;
   --help|-h|help)
     usage

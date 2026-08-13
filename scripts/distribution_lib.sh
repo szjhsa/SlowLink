@@ -13,7 +13,12 @@ DEFAULT_WEB_MODE="${DEFAULT_WEB_MODE:-http}"
 DEFAULT_WEB_PORT="${DEFAULT_WEB_PORT:-8080}"
 PROTECTED_PATHS='.env data sessions redis_data backups backup watchdog.log'
 PROTECTED_GLOBS='*.session *.session-journal *.sqlite *.sqlite3 *.db *.rdb *.log'
-PROGRAM_PATHS='.dockerignore .env.example .gitattributes .gitignore CHANGELOG.md Dockerfile LICENSE README.md VERSION app docker-compose.yml install.sh manage.sh uninstall.sh ops requirements.txt scripts'
+PROGRAM_PATHS='.dockerignore .gitattributes .gitignore LICENSE README.md VERSION app deploy docs scripts tests'
+COMPOSE_FILE="$INSTALL_DIR/deploy/docker-compose.yml"
+
+compose() {
+  docker compose --env-file "$INSTALL_DIR/.env" -f "$COMPOSE_FILE" "$@"
+}
 
 log() {
   printf '[SlowLink] %s\n' "$*"
@@ -378,10 +383,11 @@ extract_release_archive() {
   if find "$stage" -type l -print -quit | grep -q .; then
     die "安装包包含不允许的符号链接"
   fi
-  for required_file in VERSION Dockerfile docker-compose.yml install.sh manage.sh uninstall.sh scripts/distribution_lib.sh ops/slowlink_watchdog.sh ops/slowlink-watchdog.service; do
+  for required_file in VERSION README.md LICENSE app deploy/install.sh deploy/manage.sh deploy/uninstall.sh deploy/Dockerfile deploy/docker-compose.yml deploy/requirements.txt deploy/ops/slowlink_watchdog.sh deploy/ops/slowlink-watchdog.service scripts/distribution_lib.sh docs/CHANGELOG.md; do
     [ -f "$stage/$required_file" ] || die "安装包缺少 $required_file"
   done
   [ -d "$stage/app" ] || die "安装包缺少 app 目录"
+  [ -d "$stage/deploy" ] || die "安装包缺少 deploy 目录"
 }
 
 copy_release_files() {
@@ -394,15 +400,15 @@ copy_release_files() {
   cp -a "$stage"/. "$INSTALL_DIR"/ || die "复制程序文件失败"
   find "$INSTALL_DIR/app" -type f -exec touch {} + || die "刷新应用构建时间失败"
   mkdir -p "$INSTALL_DIR/data/sessions" || die "创建 Session 目录失败"
-  chmod 755 "$INSTALL_DIR/install.sh" "$INSTALL_DIR/manage.sh" "$INSTALL_DIR/uninstall.sh" || die "设置管理脚本权限失败"
-  chmod 755 "$INSTALL_DIR/scripts/distribution_lib.sh" "$INSTALL_DIR/ops/slowlink_watchdog.sh" || die "设置运维脚本权限失败"
+  chmod 755 "$INSTALL_DIR/deploy/install.sh" "$INSTALL_DIR/deploy/manage.sh" "$INSTALL_DIR/deploy/uninstall.sh" || die "设置管理脚本权限失败"
+  chmod 755 "$INSTALL_DIR/scripts/distribution_lib.sh" "$INSTALL_DIR/deploy/ops/slowlink_watchdog.sh" || die "设置运维脚本权限失败"
   if [ -f "$INSTALL_DIR/.env" ]; then
     chmod 600 "$INSTALL_DIR/.env" || die "设置配置文件权限失败"
   fi
 }
 
 install_watchdog() {
-  install -m 644 "$INSTALL_DIR/ops/slowlink-watchdog.service" "/etc/systemd/system/$WATCHDOG_SERVICE" || die "CPU watchdog 服务文件安装失败"
+  install -m 644 "$INSTALL_DIR/deploy/ops/slowlink-watchdog.service" "/etc/systemd/system/$WATCHDOG_SERVICE" || die "CPU watchdog 服务文件安装失败"
   systemctl daemon-reload || die "systemd 配置刷新失败"
   systemctl enable "$WATCHDOG_SERVICE" >/dev/null 2>&1 || die "CPU watchdog 启用失败"
   systemctl restart "$WATCHDOG_SERVICE" >/dev/null 2>&1 || die "CPU watchdog 启动失败"
@@ -476,7 +482,7 @@ ensure_web_proxy() {
     return 0
   fi
   log "启动 SlowLink HTTPS 代理：$web_domain_value"
-  docker compose --profile https up -d --no-deps "$CADDY_SERVICE" || return 1
+  compose --profile https up -d --no-deps "$CADDY_SERVICE" || return 1
 }
 
 verify_container_version() {
@@ -487,7 +493,7 @@ verify_container_version() {
 
 show_diagnostics() {
   printf '\n[中文诊断] SlowLink 未通过健康检查\n' >&2
-  docker compose -f "$INSTALL_DIR/docker-compose.yml" config 2>&1 | tail -n 40 >&2 || true
+  compose config 2>&1 | tail -n 40 >&2 || true
   docker inspect "$APP_CONTAINER" --format '容器状态={{.State.Status}} 健康={{if .State.Health}}{{.State.Health.Status}}{{else}}无{{end}} OOM={{.State.OOMKilled}} 错误={{.State.Error}}' 2>&1 >&2 || true
   docker logs --tail 120 "$APP_CONTAINER" 2>&1 >&2 || true
   if docker inspect "$CADDY_CONTAINER" >/dev/null 2>&1; then
@@ -513,7 +519,7 @@ deploy_application() {
   cd "$INSTALL_DIR"
   if [ "$deploy_mode" = "install" ]; then
     log "启动 Redis"
-    docker compose up -d redis || die "Redis 启动失败"
+    compose up -d redis || die "Redis 启动失败"
   fi
   if ! wait_for_redis_health 60; then
     show_diagnostics
@@ -522,9 +528,9 @@ deploy_application() {
   web_port_value=$(read_web_port)
   assert_web_port_available "$web_port_value" || die "网页端口预检失败"
   log "构建 slowlink_app 镜像"
-  docker compose build --no-cache "$APP_SERVICE" || die "slowlink_app 镜像构建失败"
+  compose build --no-cache "$APP_SERVICE" || die "slowlink_app 镜像构建失败"
   log "启动 slowlink_app 容器"
-  docker compose up -d --no-deps "$APP_SERVICE" || {
+  compose up -d --no-deps "$APP_SERVICE" || {
     show_diagnostics
     die "slowlink_app 容器启动失败"
   }
@@ -535,8 +541,8 @@ deploy_application() {
   if ! verify_container_version; then
     warn "容器版本与发布版本不一致，刷新构建上下文并无缓存重建一次"
     find "$INSTALL_DIR/app" -type f -exec touch {} +
-    docker compose build --no-cache "$APP_SERVICE" || die "slowlink_app 无缓存重建失败"
-    docker compose up -d --no-deps "$APP_SERVICE" || die "slowlink_app 无缓存重建后启动失败"
+    compose build --no-cache "$APP_SERVICE" || die "slowlink_app 无缓存重建失败"
+    compose up -d --no-deps "$APP_SERVICE" || die "slowlink_app 无缓存重建后启动失败"
     if ! wait_for_app_health 90; then
       show_diagnostics
       die "slowlink_app 无缓存重建后未通过健康检查"

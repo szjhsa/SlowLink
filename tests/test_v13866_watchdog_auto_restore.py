@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-OPS = ROOT / "ops"
+OPS = ROOT / "deploy" / "ops"
 EXPECTED_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()
 
 
@@ -50,7 +50,7 @@ class WatchdogAutoRestoreV13866Tests(unittest.TestCase):
         self.assertIn('ps -eo pid,tid,ppid,comm,%cpu,%mem,etime --sort=-%cpu', script)
         self.assertIn('docker restart "$APP_CONTAINER"', script)
         self.assertIn("snapshot", script)
-        self.assertIn("ExecStart=/bin/sh /opt/slowlink/ops/slowlink_watchdog.sh", service)
+        self.assertIn("ExecStart=/bin/sh /opt/slowlink/deploy/ops/slowlink_watchdog.sh", service)
         self.assertIn("Environment=CHECK_INTERVAL=10", service)
         self.assertIn("Environment=CPU_THRESHOLD=80", service)
         self.assertIn("Restart=always", service)

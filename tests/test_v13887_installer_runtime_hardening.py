@@ -14,7 +14,12 @@ APP = ROOT / "app"
 
 
 def read(relative: str) -> str:
-    return (ROOT / relative).read_text(encoding="utf-8-sig")
+    path = ROOT / relative
+    if not path.exists():
+        fallback = ROOT / "deploy" / relative
+        if fallback.exists():
+            path = fallback
+    return path.read_text(encoding="utf-8-sig")
 
 
 class _FailingPipeline:
@@ -90,8 +95,8 @@ class InstallerAndRuntimeHardeningV13887Tests(unittest.TestCase):
         self.assertIn("backup_program_files", install)
         self.assertIn("restore_program_files", install)
         self.assertIn("rollback_previous_release", install)
-        self.assertIn('docker compose build --no-cache "$APP_SERVICE"', library)
-        self.assertIn('docker compose up -d --no-deps "$APP_SERVICE"', library)
+        self.assertIn('compose build --no-cache "$APP_SERVICE"', library)
+        self.assertIn('compose up -d --no-deps "$APP_SERVICE"', library)
         self.assertIn("slowlink_app 镜像构建失败", library)
         self.assertIn("slowlink_app 容器启动失败", library)
         self.assertIn("wait_for_redis_health", library)

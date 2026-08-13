@@ -96,12 +96,11 @@ EOF
     caddy_config_volume=$(docker inspect "$CADDY_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)
   fi
   purge_failed=0
-  if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-    cd "$INSTALL_DIR"
-    docker compose --profile https stop caddy >/dev/null 2>&1 || true
-    docker compose --profile https rm -f caddy >/dev/null 2>&1 || true
-    docker compose stop app >/dev/null 2>&1 || true
-    docker compose rm -f app >/dev/null 2>&1 || true
+  if [ -f "$INSTALL_DIR/deploy/docker-compose.yml" ]; then
+    docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" --profile https stop caddy >/dev/null 2>&1 || true
+    docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" --profile https rm -f caddy >/dev/null 2>&1 || true
+    docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" stop app >/dev/null 2>&1 || true
+    docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" rm -f app >/dev/null 2>&1 || true
   fi
   remove_slowlink_container "$APP_CONTAINER" app || purge_failed=1
   remove_slowlink_container "$CADDY_CONTAINER" caddy || purge_failed=1
@@ -131,12 +130,11 @@ fi
 systemctl disable --now "$WATCHDOG_SERVICE" >/dev/null 2>&1 || true
 rm -f -- "/etc/systemd/system/$WATCHDOG_SERVICE"
 systemctl daemon-reload
-if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-  cd "$INSTALL_DIR"
-  docker compose --profile https stop caddy >/dev/null 2>&1 || true
-  docker compose --profile https rm -f caddy >/dev/null 2>&1 || true
-  docker compose stop app >/dev/null 2>&1 || true
-  docker compose rm -f app >/dev/null 2>&1 || true
+if [ -f "$INSTALL_DIR/deploy/docker-compose.yml" ]; then
+  docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" --profile https stop caddy >/dev/null 2>&1 || true
+  docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" --profile https rm -f caddy >/dev/null 2>&1 || true
+  docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" stop app >/dev/null 2>&1 || true
+  docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" rm -f app >/dev/null 2>&1 || true
 fi
 uninstall_failed=0
 remove_slowlink_container "$APP_CONTAINER" app || uninstall_failed=1

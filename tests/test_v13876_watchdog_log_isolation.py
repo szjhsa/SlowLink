@@ -25,7 +25,7 @@ class WatchdogLogIsolationV13876Tests(unittest.TestCase):
         self.assertIn('file=_stack_dump_file', source)
 
     def test_watchdog_collects_isolated_stack_series_without_copying_docker_logs(self):
-        source = read(ROOT / "ops" / "slowlink_watchdog.sh")
+        source = read(ROOT / "deploy" / "ops" / "slowlink_watchdog.sh")
 
         self.assertIn('STACK_DUMP_PATH=', source)
         self.assertIn('STACK_SAMPLE_COUNT="${STACK_SAMPLE_COUNT:-3}"', source)

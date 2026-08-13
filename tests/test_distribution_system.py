@@ -18,7 +18,7 @@ class DistributionSystemTests(unittest.TestCase):
         return path.read_text(encoding="utf-8")
 
     def test_install_script_has_public_release_contract(self):
-        install_text = self.read_required("install.sh")
+        install_text = self.read_required("deploy/install.sh")
         library_text = self.read_required("scripts/distribution_lib.sh")
         text = install_text + "\n" + library_text
 
@@ -32,8 +32,8 @@ class DistributionSystemTests(unittest.TestCase):
             "get.docker.com",
             "docker compose version",
             "slowlink-watchdog.service",
-            'docker compose build --no-cache "$APP_SERVICE"',
-            'docker compose up -d --no-deps "$APP_SERVICE"',
+            'compose build --no-cache "$APP_SERVICE"',
+            'compose up -d --no-deps "$APP_SERVICE"',
             "1.安装",
             "2.更新到最新版本",
             "3.卸载",
@@ -49,7 +49,7 @@ class DistributionSystemTests(unittest.TestCase):
         self.assertNotIn("docker stop slowlink_redis", text)
 
     def test_install_script_protects_runtime_data_before_copying(self):
-        install_text = self.read_required("install.sh")
+        install_text = self.read_required("deploy/install.sh")
         library_text = self.read_required("scripts/distribution_lib.sh")
         text = install_text + "\n" + library_text
 
@@ -77,23 +77,23 @@ class DistributionSystemTests(unittest.TestCase):
         self.assertIn('copy_release_files "$STAGE"', transaction.group("body"))
 
     def test_manage_script_exposes_scoped_commands(self):
-        text = self.read_required("manage.sh")
+        text = self.read_required("deploy/manage.sh")
 
         for command in ("status", "logs", "restart", "update", "backup", "uninstall", "purge"):
             self.assertIn(f"{command})", text)
         self.assertIn("slowlink_app", text)
         self.assertIn("slowlink_redis", text)
         self.assertIn("slowlink-watchdog.service", text)
-        self.assertIn("docker compose restart app", text)
+        self.assertIn('docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" restart app', text)
         self.assertIn("wait_for_app_health", text)
         self.assertIn("redis-cli BGSAVE", text)
         self.assertIn('docker cp "$REDIS_CONTAINER:/data/dump.rdb"', text)
         self.assertIn("/var/backups/slowlink", text)
-        self.assertIn('https://raw.githubusercontent.com/$REPO/main/install.sh', text)
+        self.assertIn('https://raw.githubusercontent.com/$REPO/main/deploy/install.sh', text)
         self.assertNotIn("docker compose down", text)
 
     def test_uninstall_requires_confirmation_before_destructive_actions(self):
-        text = self.read_required("uninstall.sh")
+        text = self.read_required("deploy/uninstall.sh")
 
         for fragment in (
             '/opt/slowlink',
@@ -115,8 +115,8 @@ class DistributionSystemTests(unittest.TestCase):
         self.assertLess(fixed_path_guard, service_stop)
         self.assertLess(service_stop, permanent_delete)
         preserve_section = text.split("# 保留数据卸载", 1)[1]
-        self.assertIn('docker compose stop app', preserve_section)
-        self.assertIn('docker compose rm -f app', preserve_section)
+        self.assertIn('docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" stop app', preserve_section)
+        self.assertIn('docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" rm -f app', preserve_section)
         self.assertNotIn('docker stop "$REDIS_CONTAINER"', preserve_section)
         self.assertNotIn('docker volume rm', preserve_section)
 
@@ -192,12 +192,13 @@ class DistributionSystemTests(unittest.TestCase):
             for required in (
                 "LICENSE",
                 "VERSION",
-                "Dockerfile",
-                "docker-compose.yml",
-                "install.sh",
-                "manage.sh",
-                "uninstall.sh",
+                "deploy/Dockerfile",
+                "deploy/docker-compose.yml",
+                "deploy/install.sh",
+                "deploy/manage.sh",
+                "deploy/uninstall.sh",
                 "scripts/distribution_lib.sh",
+                "docs/CHANGELOG.md",
             ):
                 self.assertIn(required, full_members)
 

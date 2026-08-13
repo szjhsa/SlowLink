@@ -11,7 +11,7 @@ Environment=CPU_THRESHOLD=80
 Environment=HIGH_COUNT_LIMIT=4
 Environment=COOLDOWN_SECONDS=600
 Environment=LOG_FILE=/opt/slowlink/watchdog.log
-ExecStart=/bin/sh /opt/slowlink/ops/slowlink_watchdog.sh
+ExecStart=/bin/sh /opt/slowlink/deploy/ops/slowlink_watchdog.sh
 Restart=always
 RestartSec=5
 Nice=10

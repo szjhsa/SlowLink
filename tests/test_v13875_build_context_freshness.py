@@ -36,8 +36,8 @@ class BuildContextFreshnessV13875Tests(unittest.TestCase):
         self.assertIn('expected_version=$(cat "$INSTALL_DIR/VERSION")', source)
         self.assertIn("import config; print(config.APP_VERSION)", source)
         self.assertIn("容器版本与发布版本不一致", source)
-        self.assertIn('docker compose build --no-cache "$APP_SERVICE"', source)
-        self.assertIn('docker compose up -d --no-deps "$APP_SERVICE"', source)
+        self.assertIn('compose build --no-cache "$APP_SERVICE"', source)
+        self.assertIn('compose up -d --no-deps "$APP_SERVICE"', source)
         self.assertIn("容器版本校验失败", source)
         self.assertNotIn("docker compose down", source)
 

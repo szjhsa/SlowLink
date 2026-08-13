@@ -10,7 +10,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License](https://img.shields.io/github/license/szjhsa/SlowLink?style=flat-square)](LICENSE)
 
-[快速安装](#快速安装) · [日常管理](#日常管理) · [更新日志](CHANGELOG.md) · [版本发布](https://github.com/szjhsa/SlowLink/releases) · [运维说明](docs/OPERATIONS.md)
+[快速安装](#快速安装) · [日常管理](#日常管理) · [更新日志](docs/CHANGELOG.md) · [版本发布](https://github.com/szjhsa/SlowLink/releases) · [运维说明](docs/OPERATIONS.md)
 
 </div>
 
@@ -21,7 +21,7 @@ SlowLink 基于 Telethon、Flask 和 Redis，监听指定 Telegram 群组或频�
 支持 Ubuntu、Debian，需要 `root` 或 `sudo` 权限。脚本会自动安装 Docker Engine 与 Docker Compose，并显示中文管理菜单。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/deploy/install.sh | sudo bash
 ```
 
 默认安装目录为 `/opt/slowlink`。菜单会先选择网页访问方式：
@@ -32,14 +32,14 @@ curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh | s
 非交互安装可以直接指定 HTTPS 域名：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh -o /tmp/slowlink-install.sh
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/deploy/install.sh -o /tmp/slowlink-install.sh
 sudo sh /tmp/slowlink-install.sh --domain slowlink.example.com
 ```
 
 也可以明确使用 HTTP 和自定义端口：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh -o /tmp/slowlink-install.sh
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/deploy/install.sh -o /tmp/slowlink-install.sh
 sudo sh /tmp/slowlink-install.sh --http --port 18080
 ```
 
@@ -83,14 +83,14 @@ flowchart LR
 
 | 命令 | 用途 |
 | --- | --- |
-| `sudo /opt/slowlink/manage.sh status` | 查看版本、容器、监听、Redis、Session 与 watchdog 状态 |
-| `sudo /opt/slowlink/manage.sh logs` | 查看应用实时日志 |
-| `sudo /opt/slowlink/manage.sh restart` | 只重启 `slowlink_app` |
-| `sudo /opt/slowlink/manage.sh update` | 更新到最新正式版本 |
-| `sudo /opt/slowlink/manage.sh web` | 切换域名 HTTPS 或 IP + 端口 HTTP |
-| `sudo /opt/slowlink/manage.sh backup` | 备份配置、Session 和 Redis 数据 |
-| `sudo /opt/slowlink/manage.sh uninstall` | 卸载程序并保留数据 |
-| `sudo /opt/slowlink/manage.sh purge` | 二次确认后彻底删除 SlowLink |
+| `sudo /opt/slowlink/deploy/manage.sh status` | 查看版本、容器、监听、Redis、Session 与 watchdog 状态 |
+| `sudo /opt/slowlink/deploy/manage.sh logs` | 查看应用实时日志 |
+| `sudo /opt/slowlink/deploy/manage.sh restart` | 只重启 `slowlink_app` |
+| `sudo /opt/slowlink/deploy/manage.sh update` | 更新到最新正式版本 |
+| `sudo /opt/slowlink/deploy/manage.sh web` | 切换域名 HTTPS 或 IP + 端口 HTTP |
+| `sudo /opt/slowlink/deploy/manage.sh backup` | 备份配置、Session 和 Redis 数据 |
+| `sudo /opt/slowlink/deploy/manage.sh uninstall` | 卸载程序并保留数据 |
+| `sudo /opt/slowlink/deploy/manage.sh purge` | 二次确认后彻底删除 SlowLink |
 
 ## 数据与稳定性
 
@@ -120,14 +120,10 @@ flowchart LR
 slowlink/
 ├── app/                    # SlowLink 应用与 Web 界面
 ├── docs/                   # 运维文档
-├── ops/                    # Caddy、CPU watchdog 与 systemd 服务
 ├── scripts/                # 发布构建与安装公共逻辑
 ├── tests/                  # 回归测试
-├── install.sh              # 中文一键安装与更新菜单
-├── manage.sh               # 日常管理命令
-├── uninstall.sh            # 保留数据卸载与彻底删除
-├── docker-compose.yml      # 应用、Redis 与可选 Caddy 编排
-└── CHANGELOG.md            # 完整更新日志
+├── deploy/                 # Docker、一键安装与管理脚本
+└── docs/                   # 文档与更新日志
 ```
 
 ## 安全说明

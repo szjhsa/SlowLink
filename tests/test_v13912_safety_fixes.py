@@ -97,7 +97,7 @@ class SafetyFixesV13912Tests(unittest.TestCase):
         self.assertLess(elapsed_ms, 1000)
 
     def test_regex_dependency_is_pinned(self):
-        requirements = read(ROOT / "requirements.txt")
+        requirements = read(ROOT / "deploy" / "requirements.txt")
         self.assertIn("regex==", requirements)
 
 

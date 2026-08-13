@@ -13,7 +13,9 @@ services:
     command: redis-server --appendonly yes
 
   app:
-    build: .
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: slowlink_app
     restart: always
     logging:
@@ -33,7 +35,7 @@ services:
     ports:
       - "${SLOWLINK_BIND_HOST:-0.0.0.0}:${SLOWLINK_WEB_PORT:-8080}:8080"
     volumes:
-      - ./data/sessions:/app/sessions
+      - ../data/sessions:/app/sessions
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -58,7 +60,7 @@ services:
       - "443:443"
       - "443:443/udp"
     volumes:
-      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../deploy/ops/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 

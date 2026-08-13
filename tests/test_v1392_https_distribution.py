@@ -7,7 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def read(relative: str) -> str:
-    return (ROOT / relative).read_text(encoding="utf-8-sig")
+    path = ROOT / relative
+    if not path.exists():
+        fallback = ROOT / "deploy" / relative
+        if fallback.exists():
+            path = fallback
+    return path.read_text(encoding="utf-8-sig")
 
 
 class HttpsDistributionV1392Tests(unittest.TestCase):
@@ -32,7 +37,7 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
         self.assertIn('"80:80"', compose)
         self.assertIn('"443:443"', compose)
         self.assertIn('"443:443/udp"', compose)
-        self.assertIn("./ops/Caddyfile:/etc/caddy/Caddyfile:ro", compose)
+        self.assertIn("../deploy/ops/Caddyfile:/etc/caddy/Caddyfile:ro", compose)
         self.assertIn("caddy_data:/data", compose)
         self.assertIn("caddy_config:/config", compose)
 
@@ -134,7 +139,7 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
         self.assertIn("caddy_is_running", body)
         self.assertIn("current_caddy_domain", body)
         self.assertIn("保持现有 Caddy 容器", body)
-        self.assertIn('docker compose --profile https up -d --no-deps "$CADDY_SERVICE"', body)
+        self.assertIn('compose --profile https up -d --no-deps "$CADDY_SERVICE"', body)
         self.assertNotIn("docker compose down", body)
         self.assertNotIn("REDIS_CONTAINER", body)
         self.assertNotIn("assistant", body.lower())
@@ -187,7 +192,7 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
         )
         self.assertIsNotNone(switcher)
         self.assertNotIn("REDIS_CONTAINER", switcher.group("body"))
-        self.assertIn('docker compose up -d --no-deps "$APP_SERVICE"', switcher.group("body"))
+        self.assertIn('docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" up -d --no-deps "$APP_SERVICE"', switcher.group("body"))
 
     def test_uninstall_removes_only_slowlink_caddy_and_preserves_data_by_default(self):
         uninstall = read("uninstall.sh")
@@ -195,8 +200,8 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
         self.assertIn('CADDY_CONTAINER="slowlink_caddy"', uninstall)
         self.assertIn("container_is_slowlink_service", uninstall)
         self.assertIn("volume_is_slowlink_owned", uninstall)
-        self.assertIn('docker compose --profile https stop caddy', uninstall)
-        self.assertIn('docker compose --profile https rm -f caddy', uninstall)
+        self.assertIn('--profile https stop caddy', uninstall)
+        self.assertIn('--profile https rm -f caddy', uninstall)
 
         preserve = uninstall.split("# 保留数据卸载", 1)[1]
         self.assertIn('remove_slowlink_container "$APP_CONTAINER" app', preserve)
@@ -221,14 +226,14 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
 
         self.assertIsNotNone(extractor)
         self.assertNotIn("ops/Caddyfile", extractor.group("body"))
-        self.assertIn('[ ! -f "$STAGE/ops/Caddyfile" ]', install)
+        self.assertIn('[ ! -f "$STAGE/deploy/ops/Caddyfile" ]', install)
         self.assertIn("不支持域名 HTTPS", install)
 
     def test_full_release_contains_the_caddy_configuration(self):
         builder = read("scripts/build_release.py")
 
-        self.assertIn('"ops",', builder)
-        self.assertTrue((ROOT / "ops" / "Caddyfile").is_file())
+        self.assertIn('"deploy",', builder)
+        self.assertTrue((ROOT / "deploy" / "ops" / "Caddyfile").is_file())
 
 
 if __name__ == "__main__":

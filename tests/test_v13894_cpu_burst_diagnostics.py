@@ -63,7 +63,7 @@ class CpuBurstDiagnosticsV13894Tests(unittest.TestCase):
         self.assertLess(time.perf_counter() - started, 0.1)
 
     def test_watchdog_uses_cgroup_window_and_captures_repeated_hot_stacks(self):
-        source = (ROOT / "ops" / "slowlink_watchdog.sh").read_text(encoding="utf-8-sig")
+        source = (ROOT / "deploy" / "ops" / "slowlink_watchdog.sh").read_text(encoding="utf-8-sig")
 
         self.assertIn('STACK_SAMPLE_COUNT="${STACK_SAMPLE_COUNT:-3}"', source)
         self.assertIn('STACK_SAMPLE_INTERVAL="${STACK_SAMPLE_INTERVAL:-1}"', source)

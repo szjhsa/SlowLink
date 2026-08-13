@@ -16,9 +16,9 @@ KEEP_TMP_DIR=0
 [ "$#" -eq 0 ] && SHOW_MENU=1
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || pwd)
-if [ -f "$SCRIPT_DIR/VERSION" ] && [ -r "$SCRIPT_DIR/scripts/distribution_lib.sh" ]; then
+if [ -f "$SCRIPT_DIR/../VERSION" ] && [ -r "$SCRIPT_DIR/../scripts/distribution_lib.sh" ]; then
   # shellcheck disable=SC1091
-  . "$SCRIPT_DIR/scripts/distribution_lib.sh"
+  . "$SCRIPT_DIR/../scripts/distribution_lib.sh"
 else
   BOOTSTRAP_LIB=$(mktemp /tmp/slowlink-distribution-lib.XXXXXX)
   curl -fsSL "https://raw.githubusercontent.com/$REPO/main/scripts/distribution_lib.sh" -o "$BOOTSTRAP_LIB" || {
@@ -44,7 +44,7 @@ trap 'exit 143' TERM
 
 usage() {
   cat <<'EOF'
-用法：sudo sh install.sh [--version 1.39.11] [--domain DOMAIN | --http] [--port 8080] [--update]
+用法：sudo sh deploy/install.sh [--version 1.0] [--domain DOMAIN | --http] [--port 8080] [--update]
 
   --version VERSION  安装指定 GitHub Release
   --domain DOMAIN    使用域名 HTTPS，例如 slowlink.example.com
@@ -59,14 +59,14 @@ EOF
 
 run_installed_uninstall() {
   uninstall_mode=$1
-  if [ ! -f "$INSTALL_DIR/uninstall.sh" ]; then
+  if [ ! -f "$INSTALL_DIR/deploy/uninstall.sh" ]; then
     printf '[提示] 尚未检测到已安装的 SlowLink。\n' > /dev/tty
     return 1
   fi
   if [ "$uninstall_mode" = "purge" ]; then
-    sh "$INSTALL_DIR/uninstall.sh" --purge
+    sh "$INSTALL_DIR/deploy/uninstall.sh" --purge
   else
-    sh "$INSTALL_DIR/uninstall.sh"
+    sh "$INSTALL_DIR/deploy/uninstall.sh"
   fi
 }
 
@@ -105,7 +105,7 @@ EOF
     case "$choice" in
       1) UPDATE_ONLY=0; return ;;
       2)
-        if [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
+        if [ ! -f "$INSTALL_DIR/deploy/docker-compose.yml" ]; then
           printf '[提示] 尚未检测到安装，请先选择 1 安装。\n' > /dev/tty
         else
           UPDATE_ONLY=1
@@ -306,7 +306,7 @@ require_root
 if [ "$SHOW_MENU" -eq 1 ]; then
   main_menu
 fi
-if [ "$UPDATE_ONLY" -eq 1 ] && [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
+if [ "$UPDATE_ONLY" -eq 1 ] && [ ! -f "$INSTALL_DIR/deploy/docker-compose.yml" ]; then
   die "尚未检测到安装，请先执行安装"
 fi
 
@@ -326,7 +326,7 @@ download_release "$REQUESTED_VERSION" "$TMP_DIR"
 validate_release_archive "$FULL_FILE"
 STAGE="$TMP_DIR/stage"
 extract_release_archive "$FULL_FILE" "$STAGE"
-if [ "$SLOWLINK_WEB_MODE" = "https" ] && [ ! -f "$STAGE/ops/Caddyfile" ]; then
+if [ "$SLOWLINK_WEB_MODE" = "https" ] && [ ! -f "$STAGE/deploy/ops/Caddyfile" ]; then
   die "所选 Release 不支持域名 HTTPS，请安装最新版本或改用 --http"
 fi
 PROGRAM_BACKUP="$TMP_DIR/program-backup"
@@ -354,4 +354,4 @@ fi
 installed_version=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || printf '未知')
 log "完成：SlowLink $installed_version，容器健康检查已通过"
 log "网页地址：$(web_access_url)"
-printf '管理命令：sudo %s/manage.sh status\n' "$INSTALL_DIR"
+printf '管理命令：sudo %s/deploy/manage.sh status\n' "$INSTALL_DIR"
