@@ -694,7 +694,8 @@ function bindAjaxForms(){
       const old = btn ? btn.textContent : '';
       if(btn){ btn.disabled = true; btn.textContent = '处理中...'; }
       try{
-        const res = await fetch(form.action, {method: form.method || 'POST', body: new FormData(form), headers: {'X-SlowLink-Ajax':'1','Accept':'application/json'}, credentials:'same-origin'});
+        const action = (e.submitter && e.submitter.formAction) || form.action;
+        const res = await fetch(action, {method: form.method || 'POST', body: new FormData(form), headers: {'X-SlowLink-Ajax':'1','Accept':'application/json'}, credentials:'same-origin'});
         const ct = (res.headers.get('content-type') || '').toLowerCase();
         let data;
         if(ct.includes('application/json')){

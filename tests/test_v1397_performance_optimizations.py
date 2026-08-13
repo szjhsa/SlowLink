@@ -59,6 +59,8 @@ class FakeChannel:
 
 class FakeChat:
     id = 222
+    access_hash = 789
+    title = "普通群"
 
 
 class FakeUser:
@@ -88,8 +90,13 @@ class PerformanceOptimizationsV1397Tests(unittest.TestCase):
             "self._worker_idle_since",
             "def _retire_worker_spec",
             "worker_id >= (self._desired_normal_workers or 1)",
+            "target = MIN_NORMAL_WORKERS",
         ):
             self.assertIn(fragment, runner)
+        self.assertNotIn(
+            "max(MIN_NORMAL_WORKERS, self._base_normal_workers - 1)",
+            runner,
+        )
 
     def test_redis_records_are_batched_and_flushed_together(self):
         fake_redis_module = types.ModuleType("redis")

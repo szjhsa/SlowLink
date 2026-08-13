@@ -82,6 +82,52 @@ class DedupStatsAndCollisionsV13910Tests(unittest.TestCase):
         self.assertEqual(read("VERSION").strip(), EXPECTED_VERSION)
         self.assertIn(f'APP_VERSION = "{EXPECTED_VERSION}"', read(APP / "config.py"))
 
+    def test_lottery_collision_uses_the_same_redis_list_as_web_reader(self):
+        fake_redis_module = types.ModuleType("redis")
+        fake_redis_module.Redis = lambda *args, **kwargs: _Redis()
+        old_redis_module = sys.modules.get("redis")
+        sys.modules["redis"] = fake_redis_module
+        sys.path.insert(0, str(APP))
+        try:
+            sys.modules.pop("redis_store", None)
+            import redis_store
+
+            fake = _Redis()
+            redis_store.r = fake
+            redis_store._BATCH_THREAD_STARTED = True
+            redis_store._BATCH_BUFFER = {
+                "events": [], "hits": [], "fails": [], "perf_events": [],
+                "daily": [], "counters": [], redis_store.COLLISION_LIST: [],
+            }
+            redis_store.log_line = Mock()
+            collision = {"identity": "global-lottery:abc", "dedup_id": "text:blocked"}
+            redis_store.add_lottery_collision(collision)
+            redis_store.flush_batch_records()
+
+            calls = [item for pipeline in fake.pipelines for item in pipeline]
+            self.assertTrue(any(
+                name == "lpush" and key == "dedup:collisions"
+                for name, key, *_ in calls
+            ))
+            self.assertFalse(any(
+                name == "lpush" and key == "collisions"
+                for name, key, *_ in calls
+            ))
+            self.assertTrue(any(
+                name == "hincrby" and key == "stats:lottery_collisions"
+                for name, key, *_ in calls
+            ))
+        finally:
+            sys.modules.pop("redis_store", None)
+            if old_redis_module is None:
+                sys.modules.pop("redis", None)
+            else:
+                sys.modules["redis"] = old_redis_module
+            try:
+                sys.path.remove(str(APP))
+            except ValueError:
+                pass
+
     def test_hit_writes_rule_and_source_counters_in_batch(self):
         fake_redis_module = types.ModuleType("redis")
         fake_redis_module.Redis = lambda *args, **kwargs: _Redis()

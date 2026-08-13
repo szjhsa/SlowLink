@@ -32,6 +32,7 @@ STATS_HASH_KEYS = (
     "stats:source_duplicates",
     "stats:lottery_collisions",
 )
+COLLISION_LIST = "dedup:collisions"
 STATS_HASH_MAX_FIELDS = 500
 STATS_HASH_PRUNE_WATERMARK = 400
 STATS_HASH_PRUNE_INTERVAL_SECONDS = 300.0
@@ -318,10 +319,14 @@ def _write_records_now(key: str, records: list[tuple[str, int]]) -> None:
             pass
 
 
-def flush_batch_records() -> None:
+def flush_batch_records(wait: bool = False) -> None:
     global _BATCH_FLUSHING
     if _BATCH_FLUSHING:
-        return
+        if wait:
+            while _BATCH_FLUSHING:
+                time.sleep(0.01)
+        else:
+            return
     _BATCH_FLUSHING = True
     pending: dict[str, list] = {}
     try:
@@ -333,7 +338,7 @@ def flush_batch_records() -> None:
             return
         try:
             pipe = r.pipeline()
-            for key in ("events", "hits", "fails", "perf_events", "collisions"):
+            for key in ("events", "hits", "fails", "perf_events", COLLISION_LIST):
                 for raw, limit in pending.get(key) or []:
                     pipe.lpush(key, raw)
                     pipe.ltrim(key, 0, limit - 1)
@@ -525,7 +530,6 @@ def dedup_stats(limit: int = 20) -> dict:
     }
 
 
-COLLISION_LIST = "dedup:collisions"
 _COLLISION_FILTER_SCRIPT = """
 local items = redis.call('LRANGE', KEYS[1], 0, -1)
 local kept = {}
@@ -546,7 +550,7 @@ return #kept
 def add_lottery_collision(item: dict, limit: int = 200) -> None:
     item = dict(item)
     item.setdefault("time", format_time())
-    _enqueue_record("collisions", json.dumps(item, ensure_ascii=False), limit)
+    _enqueue_record(COLLISION_LIST, json.dumps(item, ensure_ascii=False), limit)
     _enqueue_counter(
         "stats:lottery_collisions",
         str(item.get("identity") or "")[:200],
@@ -566,6 +570,7 @@ def list_collisions(limit: int = 30) -> list[dict]:
 
 def clear_collisions() -> None:
     try:
+        flush_batch_records(wait=True)
         r.delete(COLLISION_LIST)
     except Exception:
         pass

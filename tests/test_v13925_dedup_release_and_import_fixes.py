@@ -75,6 +75,41 @@ class DedupReleaseAndImportFixesV13925Tests(unittest.TestCase):
         )
         self.assertNotIn('"monitor_chats"', rules_only_branch.group(0))
 
+    def test_dedup_import_clears_listener_ttl_cache(self):
+        web = read(APP / "web.py")
+        import_config = re.search(
+            r"def import_config\(\):.*?(?=\n\s*@)",
+            web,
+            flags=re.S,
+        )
+        self.assertIsNotNone(import_config)
+        body = import_config.group(0)
+        changed_branch = re.search(
+            r"if changed_dedup:.*?(?=\n\s+ui = )",
+            body,
+            flags=re.S,
+        )
+        self.assertIsNotNone(changed_branch)
+        self.assertIn("clear_ttl_cache()", changed_branch.group(0))
+
+    def test_partial_dialog_refresh_restores_persisted_entity_index(self):
+        web = read(APP / "web.py")
+        refresh = re.search(
+            r"def refresh_dialogs\(\):.*?(?=\n\s*@)",
+            web,
+            flags=re.S,
+        )
+        self.assertIsNotNone(refresh)
+        body = refresh.group(0)
+        self.assertIn('old_entity_index = get_json("entity_index", {}) or {}', body)
+        self.assertGreaterEqual(body.count('set_json("entity_index", old_entity_index)'), 2)
+
+    def test_ajax_submit_honors_formaction_for_code_rule_delete(self):
+        index = read(APP / "templates" / "index.html")
+        self.assertIn("e.submitter && e.submitter.formAction", index)
+        self.assertIn("const action = (e.submitter && e.submitter.formAction) || form.action;", index)
+        self.assertIn("fetch(action, {method: form.method || 'POST'", index)
+
 
 if __name__ == "__main__":
     unittest.main()

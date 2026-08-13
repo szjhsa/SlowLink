@@ -129,11 +129,14 @@ def _entity_index_payload(entity) -> dict:
         if (
             getattr(entity, "broadcast", False)
             or getattr(entity, "megagroup", False)
-            or getattr(entity, "first_name", None) is None
         ):
             kind = "channel"
-        else:
+        elif getattr(entity, "first_name", None) is not None:
             kind = "user"
+        elif getattr(entity, "title", None) is not None:
+            kind = "chat"
+        else:
+            kind = "channel"
         return {"kind": kind, "id": int(eid), "access_hash": int(access_hash)}
     return {"kind": "chat", "id": int(eid)}
 

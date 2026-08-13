@@ -112,6 +112,7 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
         fake_redis_store.smembers = lambda key: set(store.get(key, set()))
         fake_redis_store.srem = lambda key, value: store.setdefault(key, set()).discard(value)
         fake_redis_store.trim_runtime_lists = lambda: None
+        fake_redis_store.flush_batch_records = lambda wait=False: None
 
         fake_bot_runner = types.ModuleType("bot_runner")
         fake_bot_runner.manager = types.SimpleNamespace(

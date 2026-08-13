@@ -81,6 +81,30 @@ class CpuRootCauseMitigationV13874Tests(unittest.TestCase):
         self.assertIn("listener_flow_stats", source)
         self.assertIn("最近消息流", source)
 
+    def test_dialog_cache_clear_also_clears_persisted_entity_index(self):
+        web = read(APP / "web.py")
+        clear_cache = re.search(
+            r"def clear_cache\(\):.*",
+            web,
+            flags=re.S,
+        )
+        self.assertIsNotNone(clear_cache)
+        body = clear_cache.group(0)
+        dialogs_branch = re.search(
+            r"elif kind == \"dialogs\":.*?elif kind == \"runtime\":",
+            body,
+            flags=re.S,
+        )
+        self.assertIsNotNone(dialogs_branch)
+        self.assertIn('delete("dialog_cache", "entity_index")', dialogs_branch.group(0))
+        self.assertIn("manager.entity_cache = {}", dialogs_branch.group(0))
+        self.assertIn("manager._monitor_filter_dirty = True", dialogs_branch.group(0))
+
+    def test_clear_record_actions_wait_for_batch_flush(self):
+        web = read(APP / "web.py")
+        self.assertGreaterEqual(web.count("flush_batch_records(wait=True)"), 2)
+        self.assertIn("from redis_store import", web)
+
 
 if __name__ == "__main__":
     unittest.main()

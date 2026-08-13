@@ -388,7 +388,7 @@ class BotManager:
                 and self._active_jobs == 0
                 and now - self._worker_idle_since >= WORKER_SHRINK_IDLE_SECONDS
             ):
-                target = max(MIN_NORMAL_WORKERS, self._base_normal_workers - 1)
+                target = MIN_NORMAL_WORKERS
             else:
                 target = self._desired_normal_workers
         target = max(MIN_NORMAL_WORKERS, min(MAX_NORMAL_WORKERS, target))

@@ -39,6 +39,7 @@ from redis_store import (
     list_hits,
     list_perf_events,
     log_line,
+    flush_batch_records,
     migrate_known_regex_rules,
     push_event,
     r,
@@ -712,9 +713,11 @@ def refresh_dialogs():
     try:
         old_dialogs = get_json("dialog_cache", []) or []
         old_entity_cache = dict(getattr(manager, "entity_cache", {}) or {})
+        old_entity_index = get_json("entity_index", {}) or {}
         old_entity_refreshed_ts = getattr(manager, "_entity_cache_refreshed_ts", 0.0)
         dialogs = run_async(manager.list_dialogs(force=True))
         if not dialogs:
+            set_json("entity_index", old_entity_index)
             manager.entity_cache = old_entity_cache
             manager._entity_cache_refreshed_ts = old_entity_refreshed_ts
             manager._monitor_filter_dirty = True
@@ -723,6 +726,7 @@ def refresh_dialogs():
         old_count = len(old_dialogs)
         new_count = len(dialogs)
         if should_keep_existing_dialog_cache(old_count=old_count, new_count=new_count):
+            set_json("entity_index", old_entity_index)
             manager.entity_cache = old_entity_cache
             manager._entity_cache_refreshed_ts = old_entity_refreshed_ts
             manager._monitor_filter_dirty = True
@@ -746,6 +750,10 @@ def refresh_dialogs():
         push_event("success", msg)
         return done(msg, "success")
     except Exception as e:
+        set_json("entity_index", old_entity_index)
+        manager.entity_cache = old_entity_cache
+        manager._entity_cache_refreshed_ts = old_entity_refreshed_ts
+        manager._monitor_filter_dirty = True
         add_fail({"stage": "refresh_dialogs", "error": str(e)})
         return done(f"刷新监听面板失败：{e}", "error", ok=False)
 
@@ -1240,6 +1248,7 @@ def import_config():
                     set_value(dst, d[src])
                     changed_dedup = True
             if changed_dedup:
+                clear_ttl_cache()
                 imported.append("去重设置")
             ui = payload.get("ui") or {}
             if isinstance(ui, dict) and ui.get("display_timezone"):
@@ -1262,6 +1271,7 @@ def clear_logs():
     if gate:
         return gate
     clear_stats_cache()
+    flush_batch_records(wait=True)
     kind = request.form.get("kind", "all")
     if kind == "events":
         delete("events")
@@ -1288,6 +1298,7 @@ def clear_cache():
     if gate:
         return gate
     clear_stats_cache()
+    flush_batch_records(wait=True)
     kind = request.form.get("kind", "records")
     try:
         deleted = 0
@@ -1298,12 +1309,15 @@ def clear_cache():
             delete("dedup:recent")
             msg = "去重显示记录已清空，不影响防重复缓存"
         elif kind == "dialogs":
-            delete("dialog_cache")
+            delete("dialog_cache", "entity_index")
             try:
+                manager.entity_cache = {}
+                manager._entity_cache_refreshed_ts = 0.0
+                manager._monitor_filter_dirty = True
                 manager.clear_runtime_cache()
             except Exception:
                 pass
-            msg = "会话缓存已清空；需要时请重新刷新全部群/频道"
+            msg = "会话缓存和持久化实体缓存已清空；需要时请重新刷新全部群/频道"
         elif kind == "runtime":
             for pattern in ["tmp:*", "temp:*", "test:*", "runtime:*"]:
                 deleted += delete_pattern(pattern)
