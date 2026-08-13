@@ -44,6 +44,18 @@ class MarkdownLotteryTriggerV13928Tests(unittest.TestCase):
 
         self.assertTrue(result.get("matched"))
 
+    def test_combined_old_rule_migrates(self):
+        redis_store = load_redis_store(FakeRedisClient(set()))
+        old_combined = redis_store.LEGACY_COMBINED_PRIZE_LOTTERY_RULE
+        client = FakeRedisClient({old_combined})
+        store = load_redis_store(client)
+
+        store.ensure_defaults()
+
+        rules = client.smembers("regex_rules")
+        self.assertNotIn(old_combined, rules)
+        self.assertIn(store.SAFE_COMBINED_PRIZE_LOTTERY_RULE, rules)
+
 
 if __name__ == "__main__":
     unittest.main()
