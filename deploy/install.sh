@@ -59,14 +59,26 @@ EOF
 
 run_installed_uninstall() {
   uninstall_mode=$1
-  if [ ! -f "$INSTALL_DIR/deploy/uninstall.sh" ]; then
+  if [ -f "$INSTALL_DIR/deploy/uninstall.sh" ]; then
+    :
+  elif [ -f "$INSTALL_DIR/uninstall.sh" ]; then
+    :
+  else
     printf '[提示] 尚未检测到已安装的 SlowLink。\n' > /dev/tty
     return 1
   fi
   if [ "$uninstall_mode" = "purge" ]; then
-    sh "$INSTALL_DIR/deploy/uninstall.sh" --purge
+    if [ -f "$INSTALL_DIR/deploy/uninstall.sh" ]; then
+      sh "$INSTALL_DIR/deploy/uninstall.sh" --purge
+    else
+      sh "$INSTALL_DIR/uninstall.sh" --purge
+    fi
   else
-    sh "$INSTALL_DIR/deploy/uninstall.sh"
+    if [ -f "$INSTALL_DIR/deploy/uninstall.sh" ]; then
+      sh "$INSTALL_DIR/deploy/uninstall.sh"
+    else
+      sh "$INSTALL_DIR/uninstall.sh"
+    fi
   fi
 }
 
@@ -105,7 +117,7 @@ EOF
     case "$choice" in
       1) UPDATE_ONLY=0; return ;;
       2)
-        if [ ! -f "$INSTALL_DIR/deploy/docker-compose.yml" ]; then
+        if [ ! -f "$INSTALL_DIR/deploy/docker-compose.yml" ] && [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
           printf '[提示] 尚未检测到安装，请先选择 1 安装。\n' > /dev/tty
         else
           UPDATE_ONLY=1
@@ -306,7 +318,7 @@ require_root
 if [ "$SHOW_MENU" -eq 1 ]; then
   main_menu
 fi
-if [ "$UPDATE_ONLY" -eq 1 ] && [ ! -f "$INSTALL_DIR/deploy/docker-compose.yml" ]; then
+if [ "$UPDATE_ONLY" -eq 1 ] && [ ! -f "$INSTALL_DIR/deploy/docker-compose.yml" ] && [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
   die "尚未检测到安装，请先执行安装"
 fi
 
