@@ -383,7 +383,7 @@ extract_release_archive() {
   if find "$stage" -type l -print -quit | grep -q .; then
     die "安装包包含不允许的符号链接"
   fi
-  for required_file in VERSION README.md LICENSE app deploy/install.sh deploy/manage.sh deploy/uninstall.sh deploy/Dockerfile deploy/docker-compose.yml deploy/requirements.txt deploy/ops/slowlink_watchdog.sh deploy/ops/slowlink-watchdog.service scripts/distribution_lib.sh docs/CHANGELOG.md; do
+  for required_file in VERSION README.md LICENSE deploy/install.sh deploy/manage.sh deploy/uninstall.sh deploy/Dockerfile deploy/docker-compose.yml deploy/requirements.txt deploy/ops/slowlink_watchdog.sh deploy/ops/slowlink-watchdog.service scripts/distribution_lib.sh docs/CHANGELOG.md; do
     [ -f "$stage/$required_file" ] || die "安装包缺少 $required_file"
   done
   [ -d "$stage/app" ] || die "安装包缺少 app 目录"
