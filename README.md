@@ -16,11 +16,6 @@
 
 SlowLink 基于 Telethon、Flask 和 Redis，监听指定 Telegram 群组或频道，按配置规则识别目标内容，完成去重后转发到指定会话。项目针对单核、低内存服务器持续运行场景做了队列、连接恢复和 CPU 保护。
 
-## 贡献者
-
-- [suzijin876-lgtm](https://github.com/suzijin876-lgtm)
-- [szjhsa](https://github.com/szjhsa)
-
 ## 快速安装
 
 支持 Ubuntu、Debian，需要 `root` 或 `sudo` 权限。脚本会自动安装 Docker Engine 与 Docker Compose，并显示中文管理菜单。
