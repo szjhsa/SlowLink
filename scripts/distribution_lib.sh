@@ -13,7 +13,7 @@ DEFAULT_WEB_MODE="${DEFAULT_WEB_MODE:-http}"
 DEFAULT_WEB_PORT="${DEFAULT_WEB_PORT:-8080}"
 PROTECTED_PATHS='.env data sessions redis_data backups backup watchdog.log'
 PROTECTED_GLOBS='*.session *.session-journal *.sqlite *.sqlite3 *.db *.rdb *.log'
-PROGRAM_PATHS='.dockerignore .gitattributes .gitignore LICENSE README.md VERSION app deploy docs scripts tests'
+PROGRAM_PATHS='.dockerignore .env.example .gitattributes .gitignore CHANGELOG.md Dockerfile LICENSE README.md VERSION app docker-compose.yml install.sh manage.sh uninstall.sh ops requirements.txt deploy docs scripts tests'
 COMPOSE_FILE="$INSTALL_DIR/deploy/docker-compose.yml"
 
 compose() {
