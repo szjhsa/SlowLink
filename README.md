@@ -4,13 +4,13 @@
 
 **面向低配置服务器的 Telegram 消息监听、识别、去重与转发系统**
 
-[![Release](https://img.shields.io/github/v/release/suzijin876-lgtm/slowlink?display_name=tag&sort=semver&style=flat-square)](https://github.com/suzijin876-lgtm/slowlink/releases/latest)
-[![Release Build](https://img.shields.io/github/actions/workflow/status/suzijin876-lgtm/slowlink/release.yml?style=flat-square&label=release)](https://github.com/suzijin876-lgtm/slowlink/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/szjhsa/SlowLink?display_name=tag&sort=semver&style=flat-square)](https://github.com/szjhsa/SlowLink/releases/latest)
+[![Release Build](https://img.shields.io/github/actions/workflow/status/szjhsa/SlowLink/release.yml?style=flat-square&label=release)](https://github.com/szjhsa/SlowLink/actions/workflows/release.yml)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License](https://img.shields.io/github/license/suzijin876-lgtm/slowlink?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/github/license/szjhsa/SlowLink?style=flat-square)](LICENSE)
 
-[快速安装](#快速安装) · [日常管理](#日常管理) · [更新日志](CHANGELOG.md) · [版本发布](https://github.com/suzijin876-lgtm/slowlink/releases) · [运维说明](docs/OPERATIONS.md)
+[快速安装](#快速安装) · [日常管理](#日常管理) · [更新日志](CHANGELOG.md) · [版本发布](https://github.com/szjhsa/SlowLink/releases) · [运维说明](docs/OPERATIONS.md)
 
 </div>
 
@@ -21,7 +21,7 @@ SlowLink 基于 Telethon、Flask 和 Redis，监听指定 Telegram 群组或频�
 支持 Ubuntu、Debian，需要 `root` 或 `sudo` 权限。脚本会自动安装 Docker Engine 与 Docker Compose，并显示中文管理菜单。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/suzijin876-lgtm/slowlink/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh | sudo bash
 ```
 
 默认安装目录为 `/opt/slowlink`。菜单会先选择网页访问方式：
@@ -32,14 +32,14 @@ curl -fsSL https://raw.githubusercontent.com/suzijin876-lgtm/slowlink/main/insta
 非交互安装可以直接指定 HTTPS 域名：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/suzijin876-lgtm/slowlink/main/install.sh -o /tmp/slowlink-install.sh
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh -o /tmp/slowlink-install.sh
 sudo sh /tmp/slowlink-install.sh --domain slowlink.example.com
 ```
 
 也可以明确使用 HTTP 和自定义端口：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/suzijin876-lgtm/slowlink/main/install.sh -o /tmp/slowlink-install.sh
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh -o /tmp/slowlink-install.sh
 sudo sh /tmp/slowlink-install.sh --http --port 18080
 ```
 
@@ -112,7 +112,7 @@ flowchart LR
 | `slowlink_v*_full.zip` | 完整安装包 |
 | `SHA256SUMS.txt` | 发布文件完整性校验 |
 
-更新内容会直接写入 GitHub Release 正文；`slowlink_v*_update_log.txt` 仅保留在本地归档中，不上传到 Release。最新版本请前往 [GitHub Releases](https://github.com/suzijin876-lgtm/slowlink/releases/latest) 下载。
+更新内容会直接写入 GitHub Release 正文；`slowlink_v*_update_log.txt` 仅保留在本地归档中，不上传到 Release。最新版本请前往 [GitHub Releases](https://github.com/szjhsa/SlowLink/releases/latest) 下载。
 
 ## 项目结构
 

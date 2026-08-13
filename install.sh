@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="suzijin876-lgtm/slowlink"
+REPO="szjhsa/SlowLink"
 INSTALL_DIR="/opt/slowlink"
 REQUESTED_VERSION=""
 REQUESTED_PORT=""

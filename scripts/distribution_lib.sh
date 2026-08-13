@@ -1,6 +1,6 @@
 #!/bin/sh
 
-REPO="${REPO:-suzijin876-lgtm/slowlink}"
+REPO="${REPO:-szjhsa/SlowLink}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/slowlink}"
 APP_SERVICE="${APP_SERVICE:-app}"
 APP_CONTAINER="${APP_CONTAINER:-slowlink_app}"

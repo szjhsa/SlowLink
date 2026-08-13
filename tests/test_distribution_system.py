@@ -23,7 +23,7 @@ class DistributionSystemTests(unittest.TestCase):
         text = install_text + "\n" + library_text
 
         for fragment in (
-            'REPO="suzijin876-lgtm/slowlink"',
+            'REPO="szjhsa/SlowLink"',
             'INSTALL_DIR="/opt/slowlink"',
             "/dev/tty",
             "SHA256SUMS.txt",

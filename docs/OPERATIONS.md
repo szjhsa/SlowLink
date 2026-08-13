@@ -3,7 +3,7 @@
 ## 安装与更新
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/suzijin876-lgtm/slowlink/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/szjhsa/SlowLink/main/install.sh | sudo bash
 ```
 
 脚本从 `/dev/tty` 读取菜单输入，适用于管道运行。安装目录固定为 `/opt/slowlink`，支持 Ubuntu 和 Debian，并在缺少 Docker 时自动安装 Docker Engine 与 Docker Compose 插件。
