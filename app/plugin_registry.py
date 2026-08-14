@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -238,11 +239,10 @@ def install_plugin(raw: bytes) -> dict:
                 raise ValueError(f"插件 {plugin_id} 已存在，请先卸载")
             UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
             target.parent.mkdir(parents=True, exist_ok=True)
-            staging.rename(target)
+            shutil.move(str(staging), str(target))
     except Exception:
         staging = UPLOAD_ROOT / ("_staging_" + str(os.getpid()))
         if staging.exists():
-            import shutil
             shutil.rmtree(staging, ignore_errors=True)
         raise
     invalidate()
@@ -256,7 +256,6 @@ def uninstall_plugin(plugin_id: str) -> bool:
     target = plugin_dir(plugin_id)
     if plugin_id == DEFAULT_PLUGIN or not target.exists() or not str(target.resolve()).startswith(str(UPLOAD_ROOT.resolve())):
         return False
-    import shutil
     shutil.rmtree(target, ignore_errors=True)
     invalidate(plugin_id)
     return True
