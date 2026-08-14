@@ -449,6 +449,8 @@ def index():
     data = _page_data()
     data["msg"] = session.pop("msg", "")
     data["msg_kind"] = session.pop("msg_kind", "info")
+    data["regex_test_result"] = session.pop("regex_test_result", None)
+    data["precheck_result"] = session.pop("precheck_result", None)
     return render_template("index.html", **data)
 
 
@@ -964,12 +966,7 @@ def regex_test():
     gate = require_login()
     if gate:
         return gate
-    if request.method == "GET":
-        if wants_json():
-            return jsonify({"ok": False, "message": "正则测试请使用页面按钮提交", "kind": "warning"}), 400
-        flash_msg("正则测试请使用页面按钮提交", "warning")
-        return redirect(url_for("index"))
-    text = request.form.get("text", "")
+    text = request.form.get("text", request.args.get("text", ""))
     try:
         if len(text) > 8192:
             text = text[:8192]
