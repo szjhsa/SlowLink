@@ -104,12 +104,12 @@ class PluginRegistryV110Tests(unittest.TestCase):
             try:
                 item = plugin_registry.install_plugin(make_plugin_zip("builtin"))
                 self.assertEqual(item.get("id"), "builtin")
-                self.assertTrue((plugin_registry.PLUGIN_ROOT / "builtin" / "plugin.json").exists())
+                self.assertTrue((plugin_registry.UPLOAD_ROOT / "builtin" / "plugin.json").exists())
                 self.assertTrue(plugin_registry.uninstall_plugin("builtin"))
-                self.assertFalse((plugin_registry.PLUGIN_ROOT / "builtin" / "plugin.json").exists())
+                self.assertFalse((plugin_registry.UPLOAD_ROOT / "builtin" / "plugin.json").exists())
                 plugin_registry.install_plugin(make_plugin_zip("builtin"))
                 plugin_registry.install_plugin(make_plugin_zip("builtin"))
-                self.assertTrue((plugin_registry.PLUGIN_ROOT / "builtin" / "plugin.json").exists())
+                self.assertTrue((plugin_registry.UPLOAD_ROOT / "builtin" / "plugin.json").exists())
             finally:
                 plugin_registry.PLUGIN_ROOT = original_root
                 plugin_registry.UPLOAD_ROOT = original_upload_root

@@ -66,16 +66,29 @@ def active_plugin_id() -> str:
         return env_id if (plugin_dir(env_id) / "plugin.json").exists() else ""
     redis_id = _redis_value(ACTIVE_PLUGIN_KEY, None)
     if redis_id is None:
-        return DEFAULT_PLUGIN if (PLUGIN_ROOT / DEFAULT_PLUGIN / "plugin.json").exists() else ""
+        return DEFAULT_PLUGIN if _builtin_available() else ""
     redis_id = str(redis_id).strip()
     if redis_id in {"", "none", "off"}:
         return ""
     return redis_id if (plugin_dir(redis_id) / "plugin.json").exists() else ""
 
 
+def _builtin_available() -> bool:
+    return (PLUGIN_ROOT / DEFAULT_PLUGIN / "plugin.json").exists() or (
+        UPLOAD_ROOT / DEFAULT_PLUGIN / "plugin.json"
+    ).exists()
+
+
 def plugin_dir(plugin_id: str) -> Path:
     if plugin_id == DEFAULT_PLUGIN:
+        upload_candidate = UPLOAD_ROOT / plugin_id
+        if upload_candidate.exists():
+            return upload_candidate
         return PLUGIN_ROOT / plugin_id
+    return UPLOAD_ROOT / plugin_id
+
+
+def _install_target(plugin_id: str) -> Path:
     return UPLOAD_ROOT / plugin_id
 
 
@@ -106,7 +119,7 @@ def manifest(plugin_id: str) -> dict:
 def list_plugins() -> list[dict]:
     out = []
     seen = set()
-    for root in (PLUGIN_ROOT, UPLOAD_ROOT):
+    for root in (UPLOAD_ROOT, PLUGIN_ROOT):
         if not root.exists():
             continue
         for child in sorted(root.iterdir()):
@@ -257,7 +270,7 @@ def install_plugin(raw: bytes) -> dict:
         with zf:
             staging = UPLOAD_ROOT / ("_staging_" + str(os.getpid()))
             plugin_id = _safe_extract(zf, staging)
-            target = plugin_dir(plugin_id)
+            target = _install_target(plugin_id)
             UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
             target.parent.mkdir(parents=True, exist_ok=True)
             backup = target.with_name(f"{target.name}.bak-{os.getpid()}")
