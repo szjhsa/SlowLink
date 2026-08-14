@@ -230,10 +230,11 @@ def install_plugin(raw: bytes) -> dict:
         with zf:
             staging = UPLOAD_ROOT / ("_staging_" + str(os.getpid()))
             plugin_id = _safe_extract(zf, staging)
-            if plugin_id == DEFAULT_PLUGIN:
-                raise ValueError("不允许覆盖内置默认插件")
             target = plugin_dir(plugin_id)
-            if target.exists():
+            if plugin_id == DEFAULT_PLUGIN:
+                if target.exists():
+                    raise ValueError("不允许覆盖内置默认插件")
+            elif target.exists():
                 raise ValueError(f"插件 {plugin_id} 已存在，请先卸载")
             UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
             target.parent.mkdir(parents=True, exist_ok=True)

@@ -86,6 +86,24 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 plugin_registry.UPLOAD_ROOT = original_upload_root
                 plugin_registry.invalidate()
 
+    def test_builtin_can_be_restored_when_missing_but_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_root = plugin_registry.PLUGIN_ROOT
+            original_upload_root = plugin_registry.UPLOAD_ROOT
+            plugin_registry.PLUGIN_ROOT = Path(tmp)
+            plugin_registry.UPLOAD_ROOT = Path(tmp) / "user"
+            plugin_registry.invalidate()
+            try:
+                item = plugin_registry.install_plugin(make_plugin_zip("builtin"))
+                self.assertEqual(item.get("id"), "builtin")
+                self.assertTrue((plugin_registry.PLUGIN_ROOT / "builtin" / "plugin.json").exists())
+                with self.assertRaises(ValueError):
+                    plugin_registry.install_plugin(make_plugin_zip("builtin"))
+            finally:
+                plugin_registry.PLUGIN_ROOT = original_root
+                plugin_registry.UPLOAD_ROOT = original_upload_root
+                plugin_registry.invalidate()
+
     def test_empty_plugin_clears_builtin_defaults(self):
         fake = types.ModuleType("redis_store")
         fake.smembers = lambda key: set()
