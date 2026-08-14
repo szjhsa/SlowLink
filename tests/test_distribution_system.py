@@ -189,6 +189,10 @@ class DistributionSystemTests(unittest.TestCase):
             self.assertTrue(app_members)
             self.assertTrue(all(name == "LICENSE" or name.startswith("app/") for name in app_members))
             self.assertIn("LICENSE", app_members)
+            self.assertFalse(
+                any("plugins/" in member for member in app_members + full_members),
+                "release must not bundle rule plugins",
+            )
             for required in (
                 "LICENSE",
                 "VERSION",

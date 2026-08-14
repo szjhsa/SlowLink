@@ -13,6 +13,8 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from config import APP_VERSION
+
 
 PLUGIN_ROOT = Path(__file__).resolve().parent / "plugins"
 UPLOAD_ROOT = Path(os.getenv("SLOWLINK_UPLOAD_PLUGIN_DIR", str(PLUGIN_ROOT / "user"))).resolve()
@@ -23,6 +25,18 @@ MAX_PLUGIN_BYTES = 10 * 1024 * 1024
 
 _RULES_CACHE: dict[str, dict] = {}
 _MANIFEST_CACHE: dict[str, dict] = {}
+
+
+def _version_tuple(value: str) -> tuple[int, int, int]:
+    parts = str(value or "").strip().lstrip("v").split(".")
+    nums = []
+    for part in parts[:3]:
+        if not part.isdigit():
+            raise ValueError("invalid version part")
+        nums.append(int(part))
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums)  # type: ignore[return-value]
 
 
 def _pure_mode() -> bool:
@@ -158,6 +172,13 @@ def _validate_manifest(item: dict) -> None:
         raise ValueError("插件缺少 version")
     if not str(item.get("min_core_version") or "").strip():
         raise ValueError("插件缺少 min_core_version")
+    try:
+        required = _version_tuple(str(item.get("min_core_version") or ""))
+        current = _version_tuple(APP_VERSION)
+    except Exception:
+        raise ValueError("插件 min_core_version 格式无效")
+    if required > current:
+        raise ValueError(f"插件需要 SlowLink >= {item.get('min_core_version')}，当前为 {APP_VERSION}")
 
 
 def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
@@ -192,6 +213,8 @@ def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
     plugin_id = str(item.get("id") or "").strip()
     if not PLUGIN_ID_RE.fullmatch(plugin_id):
         raise ValueError("插件 ID 无效")
+    if prefix_parts and prefix_parts[-1] != plugin_id:
+        raise ValueError("插件目录与 manifest id 不一致")
 
     target.mkdir(parents=True, exist_ok=True)
     for name in names:

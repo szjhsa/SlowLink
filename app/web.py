@@ -22,7 +22,15 @@ from bot_runner import manager
 from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
 from matcher import analyze_message, rule_diagnostics, invalidate_rule_cache
-from code_rules import add_code_rule, code_rule_diagnostics, delete_code_rule, get_code_rules, reset_code_rules, save_code_rules, update_code_rule
+from code_rules import (
+    add_code_rule,
+    code_rule_diagnostics,
+    delete_code_rule,
+    get_code_rules,
+    reset_code_rules,
+    save_code_rules_to_source,
+    update_code_rule,
+)
 from plugin_registry import (
     activate_plugin,
     active_plugin_id,
@@ -933,7 +941,8 @@ def reset_code_rules_route():
     if gate:
         return gate
     reset_code_rules()
-    return done("码识别规则已恢复默认", "success")
+    message = "码识别规则已恢复默认" if active_plugin_id() else "码识别规则已清空"
+    return done(message, "success")
 
 
 @app.post("/save_dedup")
@@ -1184,6 +1193,7 @@ def export_config():
         "exclude_texts": sorted(smembers("exclude_texts")),
         "regex_rules": sorted(smembers("regex_rules")),
         "code_rules": get_code_rules(),
+        "code_rules_source": "plugin" if active_plugin_id() else "pure",
         "dedup": {
             "enabled": get("dedup_enabled", "1") or "1",
             "mode": get("dedup_mode", "strict") or "strict",
@@ -1267,7 +1277,10 @@ def import_config():
                 if redis_key in {"exclude_texts", "regex_rules"}:
                     matcher_rules_changed = True
         if mode != "rules_only" and isinstance(payload.get("code_rules"), list):
-            save_code_rules(payload.get("code_rules") or [])
+            source = str(payload.get("code_rules_source") or "").strip()
+            if source not in {"plugin", "pure"}:
+                source = "plugin" if active_plugin_id() else "pure"
+            save_code_rules_to_source(payload.get("code_rules") or [], source)
             imported.append("码识别规则")
         if matcher_rules_changed:
             invalidate_rule_cache()
@@ -1366,18 +1379,19 @@ def plugin_uninstall_route():
     plugin_id = request.form.get("plugin_id", "").strip()
     if not plugin_id:
         return done("缺少插件 ID", "error", ok=False)
-    if plugin_id == active_plugin_id():
+    was_active = plugin_id == active_plugin_id()
+    if not uninstall_plugin(plugin_id):
+        return done("插件删除失败：不存在", "error", ok=False)
+    if was_active:
         activate_plugin("")
-    if uninstall_plugin(plugin_id):
-        reload_plugin_rules()
-        invalidate_rule_cache()
-        clear_ttl_cache()
-        try:
-            manager.clear_runtime_cache()
-        except Exception:
-            pass
-        return done(f"插件已删除：{plugin_id}", "success")
-    return done("插件删除失败：不存在", "error", ok=False)
+    reload_plugin_rules()
+    invalidate_rule_cache()
+    clear_ttl_cache()
+    try:
+        manager.clear_runtime_cache()
+    except Exception:
+        pass
+    return done(f"插件已删除：{plugin_id}", "success")
 
 
 @app.post("/clear_logs")

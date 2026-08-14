@@ -297,16 +297,21 @@ def get_code_rules() -> list[dict[str, Any]]:
 
 
 def save_code_rules(rules: list[dict[str, Any]]) -> None:
+    save_code_rules_to_source(rules, "plugin" if active_plugin_id() else "pure")
+
+
+def save_code_rules_to_source(rules: list[dict[str, Any]], source: str) -> None:
     cleaned = []
     for rule in rules:
         if isinstance(rule, dict):
             item = _normalize_rule(rule)
             if item["pattern"] and "8位十六进制" not in item.get("name", ""):
                 cleaned.append(item)
-    if active_plugin_id():
-        set_json(_rules_key(), cleaned or list(DEFAULT_CODE_RULES))
+    key = CODE_RULES_KEY if source == "plugin" else PURE_CODE_RULES_KEY
+    if source == "plugin":
+        set_json(key, cleaned or list(DEFAULT_CODE_RULES))
     else:
-        set_json(_rules_key(), cleaned)
+        set_json(key, cleaned)
     _CACHE.update({"ts": 0.0, "raw": None, "compiled": []})
 
 

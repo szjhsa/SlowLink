@@ -25,6 +25,7 @@ from code_rules import extract_code_identities, normalize_code_identity
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
 import json as _json
 from telegram_session_lock import SESSION_LOCK
+from plugin_registry import active_plugin_id as _plugin_active_id
 from plugin_registry import builtin_value as _plugin_builtin_value
 
 
@@ -125,6 +126,8 @@ class BotManager:
         except Exception: other_minutes = 20
         try: code_minutes = int(raw_code or 20)
         except Exception: code_minutes = 20
+        if not _plugin_active_id():
+            code_minutes = other_minutes
         self._dedup_settings = (now, enabled, mode, other_minutes, code_minutes)
         return enabled, mode, other_minutes, code_minutes
 

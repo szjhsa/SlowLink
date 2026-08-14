@@ -15,14 +15,18 @@ sys.path.insert(0, str(APP))
 import plugin_registry
 
 
-def make_plugin_zip(plugin_id: str = "test-pack", version: str = "0.1.0") -> bytes:
+def make_plugin_zip(
+    plugin_id: str = "test-pack",
+    version: str = "0.1.0",
+    min_core_version: str = "1.1",
+) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         manifest = {
             "id": plugin_id,
             "name": "测试规则包",
             "version": version,
-            "min_core_version": "1.1",
+            "min_core_version": min_core_version,
             "description": "unit test",
             "author": "szjhsa",
         }
@@ -67,6 +71,10 @@ class PluginRegistryV110Tests(unittest.TestCase):
     def test_invalid_zip_is_rejected(self):
         with self.assertRaises(ValueError):
             plugin_registry.install_plugin(b"not a zip")
+
+    def test_plugin_requires_compatible_core_version(self):
+        with self.assertRaises(ValueError):
+            plugin_registry.install_plugin(make_plugin_zip(min_core_version="999.0"))
 
     def test_valid_plugin_installs_into_plugin_root(self):
         with tempfile.TemporaryDirectory() as tmp:
