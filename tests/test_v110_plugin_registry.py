@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 import zipfile
 from pathlib import Path
@@ -75,6 +76,56 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 plugin_registry.PLUGIN_ROOT = original_root
                 plugin_registry.UPLOAD_ROOT = original_upload_root
                 plugin_registry.invalidate()
+
+    def test_empty_plugin_clears_builtin_defaults(self):
+        fake = types.ModuleType("redis_store")
+        fake.smembers = lambda key: set()
+        fake.get = lambda key, default=None: default
+        fake.set_value = lambda *a, **k: None
+        fake.get_json = lambda key, default=None: default
+        fake.set_json = lambda *a, **k: None
+        fake.r = None
+        fake.sha = lambda text: "x"
+        fake.format_time = lambda *a, **k: "2026-01-01 00:00:00"
+        sys.modules["redis_store"] = fake
+        for name in ("matcher", "code_rules", "dedup"):
+            sys.modules.pop(name, None)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original_root = plugin_registry.PLUGIN_ROOT
+            original_upload_root = plugin_registry.UPLOAD_ROOT
+            plugin_registry.PLUGIN_ROOT = Path(tmp)
+            plugin_registry.UPLOAD_ROOT = Path(tmp) / "user"
+            plugin_registry.invalidate()
+            try:
+                plugin_registry.install_plugin(make_plugin_zip("empty-pack"))
+                os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "empty-pack"
+                plugin_registry.invalidate()
+                plugin_registry.reload_all()
+
+                import matcher
+                import code_rules
+                import dedup
+
+                self.assertEqual(matcher.USAGE_HARD_WORDS, [])
+                self.assertEqual(matcher.CODE_LINE_RE.pattern, "(?!)")
+                self.assertEqual(code_rules.DEFAULT_CODE_RULES, [])
+                self.assertEqual(dedup.LOTTERY_KWS, [])
+
+                plugin_registry.PLUGIN_ROOT = original_root
+                plugin_registry.UPLOAD_ROOT = original_upload_root
+                os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "builtin"
+                plugin_registry.invalidate()
+                plugin_registry.reload_all()
+                self.assertIn("成功注册", matcher.USAGE_HARD_WORDS)
+                self.assertNotEqual(code_rules.DEFAULT_CODE_RULES, [])
+                self.assertIn("抽奖", dedup.LOTTERY_KWS)
+            finally:
+                plugin_registry.PLUGIN_ROOT = original_root
+                plugin_registry.UPLOAD_ROOT = original_upload_root
+                plugin_registry.invalidate()
+                for name in ("matcher", "code_rules", "dedup", "redis_store"):
+                    sys.modules.pop(name, None)
 
 
 if __name__ == "__main__":

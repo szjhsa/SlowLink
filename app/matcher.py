@@ -111,34 +111,31 @@ def reload_builtins():
         CLOSED_REGISTRATION_STATES = set()
         return
 
-    USAGE_HARD_WORDS = list(section.get("usage_hard_words") or USAGE_HARD_WORDS)
-    CODE_LINE_RE = re.compile(section.get("code_line_pattern") or CODE_LINE_RE.pattern, re.I)
+    never = re.compile(r"(?!)", re.I)
+    USAGE_HARD_WORDS = list(section.get("usage_hard_words") or [])
+    CODE_LINE_RE = re.compile(section.get("code_line_pattern") or r"(?!)", re.I)
     HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
-    INV_CODE_RE = re.compile(section.get("inv_code_pattern") or INV_CODE_RE.pattern, re.I)
-    USAGE_STATUS_RE = re.compile(section.get("usage_status_pattern") or USAGE_STATUS_RE.pattern, re.I)
+    INV_CODE_RE = re.compile(section.get("inv_code_pattern") or r"(?!)", re.I)
+    USAGE_STATUS_RE = re.compile(section.get("usage_status_pattern") or r"(?!)", re.I)
     CLOSED_REGISTER_RE = re.compile(
-        section.get("closed_register_pattern") or CLOSED_REGISTER_RE.pattern,
+        section.get("closed_register_pattern") or r"(?!)",
         re.I,
     )
     REGISTRATION_STATUS_RE = re.compile(
-        section.get("registration_status_pattern") or REGISTRATION_STATUS_RE.pattern,
+        section.get("registration_status_pattern") or r"(?!)",
         re.I,
     )
     EXHAUSTED_REGISTER_RE = re.compile(
-        section.get("exhausted_register_pattern") or EXHAUSTED_REGISTER_RE.pattern,
+        section.get("exhausted_register_pattern") or r"(?!)",
         re.I,
     )
     REGISTRATION_SUCCESS_RE = re.compile(
-        section.get("registration_success_pattern") or REGISTRATION_SUCCESS_RE.pattern,
+        section.get("registration_success_pattern") or r"(?!)",
         re.I,
     )
-    REGISTRATION_ACCOUNT_MARKERS = list(
-        section.get("registration_account_markers") or REGISTRATION_ACCOUNT_MARKERS
-    )
-    OPEN_REGISTRATION_STATES = set(section.get("open_registration_states") or OPEN_REGISTRATION_STATES)
-    CLOSED_REGISTRATION_STATES = set(
-        section.get("closed_registration_states") or CLOSED_REGISTRATION_STATES
-    )
+    REGISTRATION_ACCOUNT_MARKERS = list(section.get("registration_account_markers") or [])
+    OPEN_REGISTRATION_STATES = set(section.get("open_registration_states") or [])
+    CLOSED_REGISTRATION_STATES = set(section.get("closed_registration_states") or [])
 
 
 def _rich_text(node, depth: int = 0) -> str:

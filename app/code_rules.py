@@ -216,13 +216,12 @@ def reload_builtins():
                 item = _normalize_rule(rule)
                 if item["pattern"] and "8位十六进制" not in item.get("name", ""):
                     cleaned.append(item)
-        if cleaned:
-            DEFAULT_CODE_RULES = cleaned
-    POSITIVE_CONTEXT = list(section.get("positive_context") or POSITIVE_CONTEXT)
-    STRONG_POSITIVE_CONTEXT = list(
-        section.get("strong_positive_context") or STRONG_POSITIVE_CONTEXT
-    )
-    NEGATIVE_CONTEXT = list(section.get("negative_context") or NEGATIVE_CONTEXT)
+        DEFAULT_CODE_RULES = cleaned
+    else:
+        DEFAULT_CODE_RULES = []
+    POSITIVE_CONTEXT = list(section.get("positive_context") or [])
+    STRONG_POSITIVE_CONTEXT = list(section.get("strong_positive_context") or [])
+    NEGATIVE_CONTEXT = list(section.get("negative_context") or [])
 
 
 REGISTER_RENEW_RE = re.compile(SAFE_REGISTER_RENEW_PATTERN, re.I | re.M)

@@ -149,30 +149,30 @@ def reload_builtins():
         TTL_DEFAULTS = {"other": 20}
         return
 
-    REGISTER_KWS = list(section.get("register_keywords") or REGISTER_KWS)
-    LOTTERY_KWS = list(section.get("lottery_keywords") or LOTTERY_KWS)
-    JOINT_LOTTERY_KWS = list(section.get("joint_lottery_keywords") or JOINT_LOTTERY_KWS)
-    LONG_TERM_KWS = list(section.get("long_term_keywords") or LONG_TERM_KWS)
-    INVITE_KWS = list(section.get("invite_keywords") or INVITE_KWS)
+    REGISTER_KWS = list(section.get("register_keywords") or [])
+    LOTTERY_KWS = list(section.get("lottery_keywords") or [])
+    JOINT_LOTTERY_KWS = list(section.get("joint_lottery_keywords") or [])
+    LONG_TERM_KWS = list(section.get("long_term_keywords") or [])
+    INVITE_KWS = list(section.get("invite_keywords") or [])
     LOTTERY_ID_RE = re.compile(
-        section.get("lottery_id_pattern") or LOTTERY_ID_RE.pattern,
+        section.get("lottery_id_pattern") or r"(?!)",
         re.I,
     )
     LOTTERY_SEED_RE = re.compile(
-        section.get("lottery_seed_pattern") or LOTTERY_SEED_RE.pattern,
+        section.get("lottery_seed_pattern") or r"(?!)",
         re.I,
     )
     labels = section.get("lottery_section_labels")
-    if isinstance(labels, list) and labels:
-        LOTTERY_SECTION_LABELS = tuple(labels)
+    LOTTERY_SECTION_LABELS = tuple(labels if isinstance(labels, list) else [])
     hints = section.get("source_line_hints")
-    if isinstance(hints, list) and hints:
-        SOURCE_LINE_HINTS = list(hints)
+    SOURCE_LINE_HINTS = list(hints if isinstance(hints, list) else [])
     ttl_defaults = section.get("ttl_defaults")
     if isinstance(ttl_defaults, dict) and ttl_defaults:
         merged = dict(TTL_DEFAULTS)
         merged.update({str(k): int(v) for k, v in ttl_defaults.items()})
         TTL_DEFAULTS = merged
+    else:
+        TTL_DEFAULTS = {"other": 20}
 
 
 def _lower(text: str) -> str:
