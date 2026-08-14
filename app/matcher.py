@@ -249,13 +249,14 @@ def _compiled_rules(ttl: float = 60.0):
     if cached_raw is not None and now - cached_ts <= ttl:
         return _RULE_CACHE
     raw = tuple(sorted(smembers("regex_rules")))
+    disabled = set(smembers("regex_rules_disabled"))
 
     regexes: list[tuple[str, re.Pattern]] = []
     seen = set()
 
     for blob in raw:
         for rule in _split_rule_blob(blob):
-            if rule in seen:
+            if rule in seen or rule in disabled:
                 continue
             seen.add(rule)
 

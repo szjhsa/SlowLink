@@ -191,6 +191,7 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
         fake_modules["code_rules"].code_rule_diagnostics = lambda *a, **k: []
         fake_modules["code_rules"].delete_code_rule = lambda *a, **k: True
         fake_modules["code_rules"].get_code_rules = lambda *a, **k: []
+        fake_modules["code_rules"].get_code_rules_for_source = lambda *a, **k: []
         fake_modules["code_rules"].reset_code_rules = lambda *a, **k: None
         fake_modules["code_rules"].save_code_rules = lambda *a, **k: None
         fake_modules["code_rules"].save_code_rules_to_source = lambda *a, **k: None

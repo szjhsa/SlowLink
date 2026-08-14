@@ -94,7 +94,7 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 plugin_registry.UPLOAD_ROOT = original_upload_root
                 plugin_registry.invalidate()
 
-    def test_builtin_can_be_restored_when_missing_but_not_overwritten(self):
+    def test_plugin_same_id_update_overwrites_existing(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_root = plugin_registry.PLUGIN_ROOT
             original_upload_root = plugin_registry.UPLOAD_ROOT
@@ -108,8 +108,8 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 self.assertTrue(plugin_registry.uninstall_plugin("builtin"))
                 self.assertFalse((plugin_registry.PLUGIN_ROOT / "builtin" / "plugin.json").exists())
                 plugin_registry.install_plugin(make_plugin_zip("builtin"))
-                with self.assertRaises(ValueError):
-                    plugin_registry.install_plugin(make_plugin_zip("builtin"))
+                plugin_registry.install_plugin(make_plugin_zip("builtin"))
+                self.assertTrue((plugin_registry.PLUGIN_ROOT / "builtin" / "plugin.json").exists())
             finally:
                 plugin_registry.PLUGIN_ROOT = original_root
                 plugin_registry.UPLOAD_ROOT = original_upload_root

@@ -21,10 +21,11 @@ class WatchdogTuningV13915Tests(unittest.TestCase):
         script = read(OPS / "slowlink_watchdog.sh")
         service = read(OPS / "slowlink-watchdog.service")
 
-        self.assertIn('CHECK_INTERVAL="${CHECK_INTERVAL:-10}"', script)
+        self.assertIn('CHECK_INTERVAL="${CHECK_INTERVAL:-5}"', script)
         self.assertIn('CPU_THRESHOLD="${CPU_THRESHOLD:-80}"', script)
-        self.assertIn("Environment=CHECK_INTERVAL=10", service)
+        self.assertIn("Environment=CHECK_INTERVAL=5", service)
         self.assertIn("Environment=CPU_THRESHOLD=80", service)
+        self.assertIn("Environment=HIGH_COUNT_LIMIT=6", service)
 
     def test_snapshot_covers_redis_and_host_processes(self):
         script = read(OPS / "slowlink_watchdog.sh")

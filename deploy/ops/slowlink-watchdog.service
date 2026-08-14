@@ -6,9 +6,9 @@ Requires=docker.service
 [Service]
 Type=simple
 Environment=APP_CONTAINER=slowlink_app
-Environment=CHECK_INTERVAL=10
+Environment=CHECK_INTERVAL=5
 Environment=CPU_THRESHOLD=80
-Environment=HIGH_COUNT_LIMIT=4
+Environment=HIGH_COUNT_LIMIT=6
 Environment=COOLDOWN_SECONDS=600
 Environment=LOG_FILE=/opt/slowlink/watchdog.log
 ExecStart=/bin/sh /opt/slowlink/deploy/ops/slowlink_watchdog.sh

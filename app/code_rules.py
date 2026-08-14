@@ -273,12 +273,17 @@ def _normalize_rule(rule: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_code_rules() -> list[dict[str, Any]]:
+    return get_code_rules_for_source("plugin" if active_plugin_id() else "pure")
+
+
+def get_code_rules_for_source(source: str) -> list[dict[str, Any]]:
+    key = CODE_RULES_KEY if source == "plugin" else PURE_CODE_RULES_KEY
     try:
-        rules = get_json(_rules_key(), None)
+        rules = get_json(key, None)
     except Exception:
         rules = None
     if not rules:
-        if active_plugin_id():
+        if source == "plugin":
             rules = DEFAULT_CODE_RULES
         else:
             return []
@@ -292,8 +297,8 @@ def get_code_rules() -> list[dict[str, Any]]:
                 if item["pattern"] != str(rule.get("pattern") or "").strip():
                     migrated = True
     if len(out) < len(rules) or migrated:
-        save_code_rules(out)
-    return out or list(DEFAULT_CODE_RULES)
+        save_code_rules_to_source(out, source)
+    return out or (list(DEFAULT_CODE_RULES) if source == "plugin" else [])
 
 
 def save_code_rules(rules: list[dict[str, Any]]) -> None:

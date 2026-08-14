@@ -27,6 +27,7 @@ from code_rules import (
     code_rule_diagnostics,
     delete_code_rule,
     get_code_rules,
+    get_code_rules_for_source,
     reset_code_rules,
     save_code_rules_to_source,
     update_code_rule,
@@ -357,6 +358,7 @@ def _state_payload(light: bool = False) -> dict:
         "exclude_chats": sorted(smembers("exclude_chats")),
         "exclude_texts": sorted(smembers("exclude_texts")),
         "regex_rules": sorted(smembers("regex_rules")),
+        "disabled_regex_rules": sorted(smembers("regex_rules_disabled")),
         "code_rules": code_rule_diagnostics(),
         "events": list_events(30),
         "hits": list_hits(30),
@@ -395,6 +397,7 @@ def _page_data() -> dict:
         "exclude_chats": sorted(smembers("exclude_chats")),
         "exclude_texts": sorted(smembers("exclude_texts")),
         "regex_rules": sorted(smembers("regex_rules")),
+        "disabled_regex_rules": sorted(smembers("regex_rules_disabled")),
         "code_rules": code_rule_diagnostics(),
         "dedup_enabled": get("dedup_enabled", "1") == "1",
         "dedup_minutes": get("dedup_minutes", "20") or "20",
@@ -463,12 +466,23 @@ def login():
     if not is_initialized():
         return redirect(url_for("init"))
     if request.method == "POST":
+        lock_until = int(get("login_lock_until", "0") or 0)
+        if time.time() < lock_until:
+            return render_template("login.html", error="尝试次数过多，请 5 分钟后再试")
         password = request.form.get("password", "")
         salt = get("admin_password_salt", "") or ""
         if password_hash(password, salt) == get("admin_password_hash"):
             session["logged_in"] = True
+            delete("login_fail_count")
+            delete("login_lock_until")
             return redirect(url_for("index"))
-        return render_template("login.html", error="密码错误")
+        fail_count = int(get("login_fail_count", "0") or 0) + 1
+        if fail_count >= 5:
+            set_value("login_fail_count", "0")
+            set_value("login_lock_until", str(int(time.time()) + 300))
+            return render_template("login.html", error="密码错误次数过多，已锁定 5 分钟")
+        set_value("login_fail_count", str(fail_count))
+        return render_template("login.html", error=f"密码错误，剩余 {5 - fail_count} 次尝试")
     return render_template("login.html")
 
 
@@ -476,6 +490,29 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.post("/change_password")
+def change_password():
+    gate = require_login()
+    if gate:
+        return gate
+    old_password = request.form.get("old_password", "")
+    new_password = request.form.get("new_password", "")
+    new_password2 = request.form.get("new_password2", "")
+    salt = get("admin_password_salt", "") or ""
+    if password_hash(old_password, salt) != get("admin_password_hash"):
+        return done("原密码错误", "error", ok=False)
+    if len(new_password) < 6:
+        return done("新密码至少 6 位", "error", ok=False)
+    if new_password != new_password2:
+        return done("两次输入的新密码不一致", "error", ok=False)
+    new_salt = secrets.token_hex(16)
+    set_value("admin_password_salt", new_salt)
+    set_value("admin_password_hash", password_hash(new_password, new_salt))
+    delete("login_fail_count")
+    delete("login_lock_until")
+    return done("后台密码已修改", "success")
 
 
 @app.route("/")
@@ -875,6 +912,23 @@ def del_regex():
     return _del_set("regex_rules")
 
 
+@app.post("/toggle_regex")
+def toggle_regex():
+    gate = require_login()
+    if gate:
+        return gate
+    value = request.form.get("value", "").strip()
+    if not value:
+        return done("缺少正则规则", "error", ok=False)
+    was_disabled = bool(r.sismember("regex_rules_disabled", value))
+    if was_disabled:
+        srem("regex_rules_disabled", value)
+    else:
+        sadd("regex_rules_disabled", value)
+    invalidate_rule_cache()
+    return done("正则规则已启用" if was_disabled else "正则规则已停用", "success")
+
+
 @app.post("/add_code_rule")
 def add_code_rule_route():
     gate = require_login()
@@ -1186,6 +1240,7 @@ def export_config():
     payload = {
         "version": APP_VERSION,
         "export_time": format_time(),
+        "active_plugin": active_plugin_id(),
         "target_chat": get("target_chat", "") or "",
         "public_link_domain": _public_link_domain(),
         "monitor_chats": sorted(smembers("monitor_chats")),
@@ -1194,6 +1249,8 @@ def export_config():
         "regex_rules": sorted(smembers("regex_rules")),
         "code_rules": get_code_rules(),
         "code_rules_source": "plugin" if active_plugin_id() else "pure",
+        "code_rules_plugin": get_code_rules_for_source("plugin"),
+        "code_rules_pure": get_code_rules_for_source("pure"),
         "dedup": {
             "enabled": get("dedup_enabled", "1") or "1",
             "mode": get("dedup_mode", "strict") or "strict",
@@ -1221,6 +1278,7 @@ def import_config():
     gate = require_login()
     if gate:
         return gate
+    snapshot = None
     try:
         mode = request.form.get("mode", "overwrite")
         if mode not in {"overwrite", "merge", "rules_only"}:
@@ -1247,6 +1305,53 @@ def import_config():
                 _regex.compile(pattern, _regex.I | _regex.M | _regex.S)
             except Exception as e:
                 raise ValueError(f"码识别规则无效：{pattern[:80]} - {e}")
+
+        def _take_snapshot() -> dict:
+            snap = {}
+            string_keys = (
+                "target_chat",
+                "public_link_domain",
+                "active_plugin",
+                "display_timezone",
+                "dedup_enabled",
+                "dedup_mode",
+                "dedup_register_minutes",
+                "dedup_invite_minutes",
+                "dedup_code_minutes",
+                "dedup_lottery_minutes",
+                "dedup_joint_lottery_minutes",
+                "dedup_long_term_minutes",
+                "dedup_other_minutes",
+                "dedup_lottery_key_mode",
+                "dedup_lottery_template_mode",
+                "dedup_minutes",
+            )
+            for key in string_keys:
+                snap[key] = ("str", get(key, None))
+            for key in ("monitor_chats", "exclude_chats", "exclude_texts", "regex_rules", "regex_rules_disabled"):
+                snap[key] = ("set", list(smembers(key)))
+            for key in ("code_rules", "code_rules_pure"):
+                snap[key] = ("json", get_json(key, None))
+            return snap
+
+        def _restore_snapshot(snap: dict) -> None:
+            for key, (kind, old) in snap.items():
+                if kind == "str":
+                    if old is None:
+                        delete(key)
+                    else:
+                        set_value(key, str(old))
+                elif kind == "set":
+                    delete(key)
+                    if old:
+                        sadd(key, *old)
+                elif kind == "json":
+                    if old is None:
+                        delete(key)
+                    else:
+                        set_json(key, old)
+
+        snapshot = _take_snapshot()
         imported = []
         matcher_rules_changed = False
         if mode != "rules_only" and "target_chat" in payload:
@@ -1257,6 +1362,9 @@ def import_config():
             if domain in {"t.me", "telegram.me"}:
                 set_value("public_link_domain", domain)
                 imported.append("公开链接格式")
+        if mode != "rules_only" and "active_plugin" in payload:
+            set_value("active_plugin", str(payload.get("active_plugin") or ""))
+            imported.append("插件状态")
         if mode == "rules_only":
             set_items = [("regex_rules", "regex_rules", "正则规则")]
         else:
@@ -1276,12 +1384,22 @@ def import_config():
                 imported.append(label)
                 if redis_key in {"exclude_texts", "regex_rules"}:
                     matcher_rules_changed = True
-        if mode != "rules_only" and isinstance(payload.get("code_rules"), list):
-            source = str(payload.get("code_rules_source") or "").strip()
-            if source not in {"plugin", "pure"}:
-                source = "plugin" if active_plugin_id() else "pure"
-            save_code_rules_to_source(payload.get("code_rules") or [], source)
-            imported.append("码识别规则")
+        if mode != "rules_only":
+            imported_rule_labels = []
+            if isinstance(payload.get("code_rules_plugin"), list):
+                save_code_rules_to_source(payload.get("code_rules_plugin") or [], "plugin")
+                imported_rule_labels.append("插件码识别")
+            if isinstance(payload.get("code_rules_pure"), list):
+                save_code_rules_to_source(payload.get("code_rules_pure") or [], "pure")
+                imported_rule_labels.append("纯净码识别")
+            if not imported_rule_labels and isinstance(payload.get("code_rules"), list):
+                source = str(payload.get("code_rules_source") or "").strip()
+                if source not in {"plugin", "pure"}:
+                    source = "plugin" if active_plugin_id() else "pure"
+                save_code_rules_to_source(payload.get("code_rules") or [], source)
+                imported_rule_labels.append("码识别规则")
+            if imported_rule_labels:
+                imported.append("、".join(imported_rule_labels))
         if matcher_rules_changed:
             invalidate_rule_cache()
             migrate_known_regex_rules()
@@ -1314,11 +1432,26 @@ def import_config():
                 clear_timezone_cache()
                 imported.append("显示设置")
         try:
+            reload_plugin_rules()
+        except Exception:
+            pass
+        try:
             manager.clear_runtime_cache()
         except Exception:
             pass
         return done("配置已导入：" + ("、".join(imported) if imported else "无可导入内容"), "success")
     except Exception as e:
+        if snapshot:
+            try:
+                _restore_snapshot(snapshot)
+            except Exception:
+                pass
+            invalidate_rule_cache()
+            clear_ttl_cache()
+            try:
+                reload_plugin_rules()
+            except Exception:
+                pass
         add_fail({"stage": "import_config", "error": str(e)})
         return done(f"导入配置失败：{e}", "error", ok=False)
 

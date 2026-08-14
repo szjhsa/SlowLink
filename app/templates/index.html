@@ -129,6 +129,13 @@
           <button>提交验证码登录</button>
         </form>
         <form action="/tg_logout" method="post" class="danger-zone" data-ajax="1"><button class="danger">退出当前 Telegram 账号</button></form>
+        <h4>修改后台密码</h4>
+        <form action="/change_password" method="post" class="stack" data-ajax="1">
+          <input type="password" name="old_password" placeholder="当前后台密码" autocomplete="current-password">
+          <input type="password" name="new_password" placeholder="新密码，至少 6 位" autocomplete="new-password">
+          <input type="password" name="new_password2" placeholder="再次输入新密码" autocomplete="new-password">
+          <button>修改密码</button>
+        </form>
       </div>
       <div class="tab-panel" data-panel="target">
         <h3>转发目标</h3>
@@ -290,7 +297,7 @@
           <p class="hint">当前：{{ plugin_manifest.get('name', '未启用') }} v{{ plugin_manifest.get('version', '-') }}，ID：{{ active_plugin or '无' }}</p>
           <form action="/plugin_upload" method="post" enctype="multipart/form-data" class="stack" data-ajax="1" data-reload="1">
             <input type="file" name="plugin_file" accept=".zip,application/zip">
-            <button class="warning">上传并启用插件</button>
+            <button class="warning">上传 / 更新插件</button>
           </form>
           {% if plugins %}
           <div class="compact-list plugin-list">
@@ -299,6 +306,8 @@
               <span><b>{{ p.name }}</b> v{{ p.version }}{% if p.active %}（当前启用）{% endif %}</span>
               {% if not p.active %}
               <form action="/plugin_activate" method="post" data-ajax="1" data-reload="1" style="display:inline"><input type="hidden" name="plugin_id" value="{{ p.id }}"><button class="secondary small">启用</button></form>
+              {% else %}
+              <form action="/plugin_activate" method="post" data-ajax="1" data-reload="1" style="display:inline"><input type="hidden" name="plugin_id" value=""><button class="secondary small">停用</button></form>
               {% endif %}
               <form action="/plugin_uninstall" method="post" data-ajax="1" data-reload="1" data-confirm="确定删除插件 {{ p.name }} 吗？删除后需要重新上传才能恢复。" style="display:inline"><input type="hidden" name="plugin_id" value="{{ p.id }}"><button class="secondary small">删除</button></form>
             </div>
@@ -588,6 +597,15 @@ function renderSetList(boxId, countId, items, endpoint){
   if(!items || items.length === 0){ box.innerHTML = '<div class="empty">暂无</div>'; return; }
   box.innerHTML = items.map(item => `<div class="item"><span>${esc(item)}</span><form action="${endpoint}" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div>`).join('');
 }
+function renderRegexList(items, disabled){
+  const box = document.getElementById('regexList');
+  const count = document.getElementById('regexCount');
+  if(count) count.textContent = items ? items.length : 0;
+  if(!box) return;
+  if(!items || items.length === 0){ box.innerHTML = '<div class="empty">暂无正则规则</div>'; return; }
+  const off = new Set(disabled || []);
+  box.innerHTML = items.map(item => `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${esc(item)}</span><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div>`).join('');
+}
 function renderCodeRules(items){
   const box = document.getElementById('codeRuleList');
   const count = document.getElementById('codeRuleCount');
@@ -619,7 +637,7 @@ function renderLists(data){
   renderSetList('monitorList','monitorCount',data.monitor_chats || [],'/del_monitor');
   renderSetList('excludeList','excludeCount',data.exclude_chats || [],'/del_exclude');
   renderSetList('excludeTextList','excludeTextCount',data.exclude_texts || [],'/del_exclude_text');
-  renderSetList('regexList','regexCount',data.regex_rules || [],'/del_regex');
+  renderRegexList(data.regex_rules || [], data.disabled_regex_rules || []);
   renderCodeRules(data.code_rules || []);
   bindAjaxForms();
 }

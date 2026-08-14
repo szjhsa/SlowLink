@@ -9,10 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 
 
-def load_matcher(exclude_texts=None, regex_rules=None):
+def load_matcher(exclude_texts=None, regex_rules=None, disabled_regex_rules=None):
     sets = {
         "exclude_texts": set(exclude_texts or []),
         "regex_rules": set(regex_rules or []),
+        "regex_rules_disabled": set(disabled_regex_rules or []),
     }
     fake_store = types.ModuleType("redis_store")
     fake_store.smembers = lambda key: sets.get(key, set())
@@ -40,6 +41,15 @@ def load_matcher(exclude_texts=None, regex_rules=None):
 
 
 class ExcludeTextsV13893Tests(unittest.TestCase):
+    def test_disabled_regex_rule_does_not_match(self):
+        matcher = load_matcher(
+            regex_rules={"开放注册", "自由注册"},
+            disabled_regex_rules={"开放注册"},
+        )
+
+        self.assertFalse(matcher.match_rules("开放注册已开启")[0])
+        self.assertTrue(matcher.match_rules("自由注册已开启")[0])
+
     def test_exclude_text_wins_even_when_positive_rule_matches(self):
         matcher = load_matcher(
             exclude_texts={"仅管理员可用"},
