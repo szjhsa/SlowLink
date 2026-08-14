@@ -1499,7 +1499,7 @@ def plugin_activate_route():
             manager.clear_runtime_cache()
         except Exception:
             pass
-        return done(f"插件已切换：{plugin_id or '内置默认'}", "success")
+        return done(f"插件已停用" if not plugin_id else f"插件已切换：{plugin_id}", "success")
     except Exception as e:
         return done(f"插件切换失败：{e}", "error", ok=False)
 
