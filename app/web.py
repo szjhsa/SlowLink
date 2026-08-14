@@ -1376,8 +1376,8 @@ def plugin_uninstall_route():
             manager.clear_runtime_cache()
         except Exception:
             pass
-        return done(f"插件已卸载：{plugin_id}", "success")
-    return done("插件卸载失败：不存在或不允许卸载", "error", ok=False)
+        return done(f"插件已删除：{plugin_id}", "success")
+    return done("插件删除失败：不存在", "error", ok=False)
 
 
 @app.post("/clear_logs")

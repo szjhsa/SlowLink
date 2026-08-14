@@ -288,7 +288,7 @@
         <div class="plugin-box">
           <h4>规则插件</h4>
           <p class="hint">当前：{{ plugin_manifest.get('name', '未启用') }} v{{ plugin_manifest.get('version', '-') }}，ID：{{ active_plugin or '无' }}</p>
-          <form action="/plugin_upload" method="post" enctype="multipart/form-data" class="stack" data-ajax="1">
+          <form action="/plugin_upload" method="post" enctype="multipart/form-data" class="stack" data-ajax="1" data-reload="1">
             <input type="file" name="plugin_file" accept=".zip,application/zip">
             <button class="warning">上传并启用插件</button>
           </form>
@@ -298,11 +298,9 @@
             <div class="row">
               <span><b>{{ p.name }}</b> v{{ p.version }}{% if p.active %}（当前启用）{% endif %}</span>
               {% if not p.active %}
-              <form action="/plugin_activate" method="post" data-ajax="1" style="display:inline"><input type="hidden" name="plugin_id" value="{{ p.id }}"><button class="secondary small">启用</button></form>
+              <form action="/plugin_activate" method="post" data-ajax="1" data-reload="1" style="display:inline"><input type="hidden" name="plugin_id" value="{{ p.id }}"><button class="secondary small">启用</button></form>
               {% endif %}
-              {% if p.id != 'builtin' %}
-              <form action="/plugin_uninstall" method="post" data-ajax="1" style="display:inline"><input type="hidden" name="plugin_id" value="{{ p.id }}"><button class="secondary small">卸载</button></form>
-              {% endif %}
+              <form action="/plugin_uninstall" method="post" data-ajax="1" data-reload="1" data-confirm="确定删除插件 {{ p.name }} 吗？删除后需要重新上传才能恢复。" style="display:inline"><input type="hidden" name="plugin_id" value="{{ p.id }}"><button class="secondary small">删除</button></form>
             </div>
             {% endfor %}
           </div>
@@ -744,6 +742,7 @@ function bindAjaxForms(){
         if(data.regex_test_result) renderRegexResult(data.regex_test_result);
         if(data.precheck_result) renderPrecheckResult(data.precheck_result);
         if(data.cache_stats) updateCacheStats(data.cache_stats);
+        if(data.ok && form.dataset.reload === '1'){ location.reload(); return; }
         await requestFullState('form-submit');
         if(data.ok && !form.dataset.keepInput){
           form.querySelectorAll('input[name="value"], textarea[name="text"], input[name="code"], input[name="password"]').forEach(i => { if(i.type !== 'hidden') i.value=''; });

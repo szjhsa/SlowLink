@@ -251,10 +251,12 @@ def install_plugin(raw: bytes) -> dict:
 
 def uninstall_plugin(plugin_id: str) -> bool:
     plugin_id = str(plugin_id or "").strip()
-    if not plugin_id or plugin_id == DEFAULT_PLUGIN:
+    if not plugin_id:
         return False
     target = plugin_dir(plugin_id)
-    if plugin_id == DEFAULT_PLUGIN or not target.exists() or not str(target.resolve()).startswith(str(UPLOAD_ROOT.resolve())):
+    if not target.exists():
+        return False
+    if plugin_id != DEFAULT_PLUGIN and not str(target.resolve()).startswith(str(UPLOAD_ROOT.resolve())):
         return False
     shutil.rmtree(target, ignore_errors=True)
     invalidate(plugin_id)
