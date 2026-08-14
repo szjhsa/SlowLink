@@ -401,6 +401,14 @@ def _page_data() -> dict:
     }
 
 
+@app.after_request
+def no_store_html(response):
+    if str(getattr(response, "content_type", "") or "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.route("/init", methods=["GET", "POST"])
 def init():
     if is_initialized():
@@ -966,6 +974,7 @@ def regex_test():
     gate = require_login()
     if gate:
         return gate
+    log_line("info", f"regex_test method={request.method} path={request.path}")
     text = request.form.get("text", request.args.get("text", ""))
     try:
         if len(text) > 8192:

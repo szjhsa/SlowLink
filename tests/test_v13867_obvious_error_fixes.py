@@ -149,6 +149,9 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
             def context_processor(self, fn):
                 return fn
 
+            def after_request(self, fn):
+                return fn
+
             def errorhandler(self, *args, **kwargs):
                 return lambda fn: fn
 
