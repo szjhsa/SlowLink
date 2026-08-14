@@ -1247,6 +1247,7 @@ def export_config():
         "exclude_chats": sorted(smembers("exclude_chats")),
         "exclude_texts": sorted(smembers("exclude_texts")),
         "regex_rules": sorted(smembers("regex_rules")),
+        "disabled_regex_rules": sorted(smembers("regex_rules_disabled")),
         "code_rules": get_code_rules(),
         "code_rules_source": "plugin" if active_plugin_id() else "pure",
         "code_rules_plugin": get_code_rules_for_source("plugin"),
@@ -1367,13 +1368,17 @@ def import_config():
             set_value("active_plugin", str(payload.get("active_plugin") or ""))
             imported.append("插件状态")
         if mode == "rules_only":
-            set_items = [("regex_rules", "regex_rules", "正则规则")]
+            set_items = [
+                ("regex_rules", "regex_rules", "正则规则"),
+                ("regex_rules_disabled", "disabled_regex_rules", "停用正则"),
+            ]
         else:
             set_items = [
                 ("monitor_chats", "monitor_chats", "监听列表"),
                 ("exclude_chats", "exclude_chats", "排除列表"),
                 ("exclude_texts", "exclude_texts", "排除文本"),
                 ("regex_rules", "regex_rules", "正则规则"),
+                ("regex_rules_disabled", "disabled_regex_rules", "停用正则"),
             ]
         for redis_key, json_key, label in set_items:
             items = payload.get(json_key)
@@ -1383,7 +1388,7 @@ def import_config():
                 for item in items:
                     sadd(redis_key, str(item))
                 imported.append(label)
-                if redis_key in {"exclude_texts", "regex_rules"}:
+                if redis_key in {"exclude_texts", "regex_rules", "regex_rules_disabled"}:
                     matcher_rules_changed = True
         if mode != "rules_only":
             imported_rule_labels = []

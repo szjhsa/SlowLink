@@ -69,10 +69,8 @@ class DedupReleaseAndImportFixesV13925Tests(unittest.TestCase):
             flags=re.S,
         )
         self.assertIsNotNone(rules_only_branch)
-        self.assertIn(
-            'set_items = [("regex_rules", "regex_rules", "正则规则")]',
-            rules_only_branch.group(0),
-        )
+        self.assertIn('("regex_rules", "regex_rules", "正则规则")', rules_only_branch.group(0))
+        self.assertIn('("regex_rules_disabled", "disabled_regex_rules", "停用正则")', rules_only_branch.group(0))
         self.assertNotIn('"monitor_chats"', rules_only_branch.group(0))
 
     def test_dedup_import_clears_listener_ttl_cache(self):
