@@ -604,7 +604,7 @@ function renderRegexList(items, disabled){
   if(!box) return;
   if(!items || items.length === 0){ box.innerHTML = '<div class="empty">暂无正则规则</div>'; return; }
   const off = new Set(disabled || []);
-  box.innerHTML = items.map(item => `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${esc(item)}</span><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div>`).join('');
+  box.innerHTML = items.map(item => `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${esc(item)}</span><div class="regex-actions"><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div></div>`).join('');
 }
 function renderCodeRules(items){
   const box = document.getElementById('codeRuleList');

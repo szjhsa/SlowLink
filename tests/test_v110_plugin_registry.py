@@ -18,7 +18,7 @@ import plugin_registry
 def make_plugin_zip(
     plugin_id: str = "test-pack",
     version: str = "0.1.0",
-    min_core_version: str = "1.1",
+    min_core_version: str = "1.0",
 ) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

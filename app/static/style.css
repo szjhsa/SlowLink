@@ -224,6 +224,11 @@ body.dark pre { background: rgba(255,255,255,.08); }
 .big-logbox { max-height: 460px; }
 .compact-tabs { position: static; }
 .rule-list .item span { white-space: pre-wrap; }
+.rule-list .item { align-items: flex-start; }
+.rule-list .item > span { flex: 1 1 auto; min-width: 0; }
+.regex-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.regex-actions form { margin: 0; }
+.regex-actions button { white-space: nowrap; }
 .muted { color: #777; }
 body.dark .tab-nav, body.dark .tab-content, body.dark .backup-box { background: #10141b; border-color: #2a303a; }
 body.dark .plugin-box { background: #10141b; border-color: #2a303a; }
@@ -1771,6 +1776,19 @@ pre, code, .log, .item span, .dialog-sub, .hint, .notice-box {
     width: auto !important;
     min-width: 74px !important;
     align-self: flex-end !important;
+  }
+  .regex-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
+    width: 100% !important;
+    gap: 6px !important;
+  }
+  .regex-actions form {
+    display: block !important;
+    width: auto !important;
+  }
+  .regex-actions button {
+    min-width: 74px !important;
   }
   .rule-list .item {
     padding: 10px !important;
