@@ -14,25 +14,25 @@
   <div class="board-head unified-head">
     <div>
       <h2>运行与监控</h2>
-      <p class="hint no-margin">运行控制、监听状态、监听面板合并到一个板块。</p>
+        <p class="hint no-margin">控制监听开关与状态。</p>
     </div>
   </div>
 
   <section class="top-dashboard clean-dashboard v116-dashboard unified-dashboard">
     <div class="mini-card"><div class="mini-label">Telegram</div><div class="mini-value" id="tgStatus">{{ '已登录' if tg_logged_in else '未登录' }}</div><div class="mini-sub" id="tgUser">{{ tg_current_user }}</div></div>
-    <div class="mini-card"><div class="mini-label">监听状态</div><div class="mini-value"><span class="pill {{ bot_status }}" id="botStatus">{{ bot_status }}</span></div><div class="mini-sub">启动/停止会自动更新</div></div>
+    <div class="mini-card"><div class="mini-label">监听状态</div><div class="mini-value"><span class="pill {{ bot_status }}" id="botStatus">{{ bot_status }}</span></div><div class="mini-sub">当前监听状态</div></div>
     <div class="mini-card heartbeat-card"><div class="mini-label">监听心跳</div><div class="mini-value heartbeat-value"><span id="heartbeatHealth" class="health {{ heartbeat.health_level if heartbeat else 'idle' }}">{{ heartbeat.health if heartbeat else '未运行' }}</span></div><div class="mini-sub"><span id="heartbeatTime">{{ heartbeat.time if heartbeat else '-' }}</span> · <span id="heartbeatAge">{{ heartbeat.age_text if heartbeat else '-' }}</span></div></div>
-    <div class="mini-card"><div class="mini-label">全部群/频道</div><div class="mini-value" id="statTotal">{{ dialog_stats.total }}</div><div class="mini-sub">刷新后统计</div></div>
-    <div class="mini-card"><div class="mini-label">正在监听</div><div class="mini-value ok" id="statListening">{{ dialog_stats.listening }}</div><div class="mini-sub">当前有效选择</div></div>
-    <div class="mini-card"><div class="mini-label">未监听 / 排除</div><div class="mini-value"><span id="statUnlistened">{{ dialog_stats.unlistened }}</span> / <span id="statExcluded">{{ dialog_stats.excluded }}</span></div><div class="mini-sub">取消的也能看见</div></div>
-    <div class="mini-card"><div class="mini-label">版本</div><div class="mini-value" id="appVersion">{{ app_version }}</div><div class="mini-sub">布局修正版</div></div>
+    <div class="mini-card"><div class="mini-label">全部群/频道</div><div class="mini-value" id="statTotal">{{ dialog_stats.total }}</div><div class="mini-sub">刷新后更新</div></div>
+    <div class="mini-card"><div class="mini-label">正在监听</div><div class="mini-value ok" id="statListening">{{ dialog_stats.listening }}</div><div class="mini-sub">已启用监听</div></div>
+    <div class="mini-card"><div class="mini-label">未监听 / 排除</div><div class="mini-value"><span id="statUnlistened">{{ dialog_stats.unlistened }}</span> / <span id="statExcluded">{{ dialog_stats.excluded }}</span></div><div class="mini-sub">未监听的群会保留</div></div>
+    <div class="mini-card"><div class="mini-label">版本</div><div class="mini-value" id="appVersion">{{ app_version }}</div><div class="mini-sub">当前版本</div></div>
   </section>
 
   <section class="run-monitor-card main-block unified-control-monitor">
     <div class="control-strip">
       <div>
         <h2>运行控制</h2>
-        <p class="hint no-margin">常用开关放在这里，方便随时启动 / 停止监听。</p>
+        <p class="hint no-margin">启动或停止监听。</p>
       </div>
       <div class="button-row control-actions">
         <form action="/start_bot" method="post" data-ajax="1"><button>启动监听</button></form>
@@ -44,7 +44,7 @@
       <div class="title-row compact-title monitor-head">
         <div>
           <h2>监听面板</h2>
-          <p class="hint no-margin">默认收起列表。取消掉的群会显示为未监听，不会直接消失。</p>
+          <p class="hint no-margin">取消监听的群会显示为未监听。</p>
         </div>
         <div class="button-row monitor-head-actions">
           <button type="button" class="secondary" id="monitorFoldBtn">展开监听列表</button>
@@ -106,7 +106,7 @@
 </section>
 
 <section class="ui-board grouped-board account-board" data-active="account" id="accountBoard">
-  <div class="board-head"><div><h2>账号与转发</h2><p class="hint no-margin">账号、转发目标、监听范围集中到这一块。</p></div></div>
+  <div class="board-head"><div><h2>账号与转发</h2><p class="hint no-margin">管理账号、转发目标与监听范围。</p></div></div>
   <div class="tab-shell grouped-tabs" data-tabs="accounting">
     <div class="tab-nav">
       <button type="button" class="tab-btn active" data-tab="account">Telegram 账号</button>
@@ -165,7 +165,7 @@
 </section>
 
 <section class="ui-board grouped-board rules-board" data-active="rules" id="rulesBoard">
-  <div class="board-head"><div><h2>规则与去重</h2><p class="hint no-margin">正则决定是否转发，码识别只辅助去重，去重策略放在同一块。</p></div></div>
+  <div class="board-head"><div><h2>规则与去重</h2><p class="hint no-margin">管理转发规则与去重策略。</p></div></div>
   <div class="tab-shell grouped-tabs" data-tabs="ruleset">
     <div class="tab-nav">
       <button type="button" class="tab-btn active" data-tab="rules">正则规则</button>
@@ -177,13 +177,13 @@
       <div class="tab-panel active" data-panel="rules">
         <h3>正则规则</h3>
         <form action="/add_regex" method="post" class="row" data-ajax="1"><input name="value" placeholder="可以粘贴单条规则，也可以用 ;; 批量分隔"><button>添加</button></form>
-        <p class="hint">轻量过滤，排除群优先；码格式不要写死在正则里，可到“码识别”里配置。</p>
+        <p class="hint">添加命中后转发的正则规则。</p>
         <div class="collapse-box open-lite"><div class="summary-lite">当前正则规则：<span id="regexCount">{{ regex_rules|length }}</span> 条</div><div class="compact-list rule-list" id="regexList"></div></div>
       </div>
       <div class="tab-panel" data-panel="exclude-texts">
         <h3>排除文本</h3>
         <form action="/add_exclude_text" method="post" class="row" data-ajax="1"><input name="value" placeholder="输入关键词，消息包含它就不转发"><button>添加</button></form>
-        <p class="hint">不区分英文大小写；命中任意一条后直接排除，优先于正则和码识别。</p>
+        <p class="hint">消息包含任一关键词时直接排除。</p>
         <div class="collapse-box open-lite"><div class="summary-lite">当前排除文本：<span id="excludeTextCount">{{ exclude_texts|length }}</span> 条</div><div class="compact-list" id="excludeTextList"></div></div>
       </div>
       <div class="tab-panel" data-panel="codes">
@@ -204,11 +204,11 @@
           <div>✓ 同一个完整码跨群只发一次</div>
         </div>
         {% else %}
-        <p class="hint">纯净模式：内置强格式码识别未启用，你添加的码规则会按原样识别。</p>
+        <p class="hint">纯净模式只使用你添加的码规则。</p>
         {% endif %}
         <details class="advanced-box code-advanced">
           <summary>高级码规则设置</summary>
-          <p class="hint">{% if active_plugin %}看不懂可以不动。这里只给以后新增特殊码格式用；除完整 Register / Renew 强格式外，转不转发仍然主要看“正则规则”。{% else %}添加你的码识别格式；勾选“允许单独触发”后，命中这条规则的消息可以直接转发。{% endif %}</p>
+          <p class="hint">{% if active_plugin %}用于添加特殊码格式。{% else %}添加你的码识别格式；勾选“允许单独触发”后可直接转发。{% endif %}</p>
           <form action="/add_code_rule" method="post" class="code-rule-form" data-ajax="1">
             <input name="name" placeholder="规则名称，例如 VIP 邀请码">
             <input name="pattern" placeholder="识别正则，例如 VIP-[A-Za-z0-9-]+">
@@ -251,10 +251,10 @@
             <label>长期活动<select name="dedup_long_term_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_long_term_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
             <label>其它类型<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
           </div>
-          <p class="hint">抽奖类默认不再使用“高度相似”去重。有抽奖 ID 时按上面的“抽奖唯一字段”生成 key；没有 ID 时才用参与关键词、奖品、简介、创建者兜底。</p>
+          <p class="hint">按活动类型设置去重时间。</p>
           {% else %}
           <label>普通文本去重<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-          <p class="hint">纯净模式按标准化后的文本内容去重，不区分注册码、抽奖、邀请码等类型。</p>
+          <p class="hint">按文本内容设置去重时间。</p>
           {% endif %}
           <button>保存去重策略</button>
         </form>
@@ -264,7 +264,7 @@
 </section>
 
 <section class="ui-board grouped-board tools-board low-frequency-board" data-active="debug" id="toolsBoard">
-  <div class="board-head"><div><h2>工具与备份</h2><p class="hint no-margin">测试、检查、导入导出放在一起，平时不用就不用打开。</p></div></div>
+  <div class="board-head"><div><h2>工具与备份</h2><p class="hint no-margin">测试、备份与插件管理。</p></div></div>
   <div class="tab-shell grouped-tabs" data-tabs="tools">
     <div class="tab-nav">
       <button type="button" class="tab-btn active" data-tab="debug">调试工具</button>
@@ -275,14 +275,14 @@
         <h3>调试工具</h3>
         <div class="two-col">
           <div><h4>正则测试器</h4><form action="/regex_test" method="post" class="stack" data-ajax="1" data-result="regex"><textarea name="text" rows="5" placeholder="把要测试的消息粘贴到这里"></textarea><button>测试正则 / 分类 / 去重指纹</button></form></div>
-          <div><h4>启动自检</h4><form action="/precheck" method="post" data-ajax="1" data-result="precheck"><button>执行启动自检</button></form><p class="hint">检查 Telegram 登录、目标、监听列表、正则、Redis。</p></div>
+          <div><h4>启动自检</h4><form action="/precheck" method="post" data-ajax="1" data-result="precheck"><button>执行启动自检</button></form><p class="hint">检查系统运行状态。</p></div>
         </div>
         <div id="debugResult"></div>
       </div>
       <div class="tab-panel" data-panel="backup">
         <h3>备份恢复</h3>
         <div class="two-col">
-          <div class="backup-box"><h4>导出</h4><p class="hint">点击后直接下载 JSON 备份文件。</p><a class="button-link" href="/export_config">下载配置备份</a></div>
+          <div class="backup-box"><h4>导出</h4><p class="hint">下载配置备份文件。</p><a class="button-link" href="/export_config">下载配置备份</a></div>
           <div class="backup-box"><h4>导入</h4><form action="/import_config" method="post" enctype="multipart/form-data" class="stack" data-ajax="1"><input type="file" name="backup_file" accept="application/json,.json"><label>导入方式<select name="mode"><option value="overwrite">覆盖当前配置</option><option value="merge">合并到当前配置</option><option value="rules_only">只导入正则规则</option></select></label><button class="warning">导入备份文件</button></form></div>
         </div>
         <div class="plugin-box">
@@ -306,19 +306,19 @@
           </div>
           {% endif %}
         </div>
-        <p class="hint">备份包含监听、排除会话、排除文本、正则、转发目标、去重设置；不包含后台密码、API_HASH、Telegram session、去重缓存。插件包包含完整规则，可让纯净版恢复成你的专属版。</p>
+        <p class="hint">备份主要配置，不含密码、Session 和缓存。</p>
       </div>
     </div>
   </div>
 </section>
 
 <section class="ui-board grouped-board records-cache-board" id="recordsBoard">
-  <div class="board-head"><div><h2>记录与缓存</h2><p class="hint no-margin">缓存管理在上，记录中心在下；只保留安全清理按钮。</p></div></div>
+  <div class="board-head"><div><h2>记录与缓存</h2><p class="hint no-margin">清理记录与缓存。</p></div></div>
   <div class="section-stack">
     <div class="sub-panel cache-subpanel">
       <div class="tab-panel active" data-panel="cache">
         <h3>缓存管理</h3>
-        <p class="hint">这里只保留安全按钮，不提供“一键清全部”。不会删除 Telegram 登录、后台密码、API 配置、监听/排除、正则和转发目标。</p>
+        <p class="hint">仅清理记录和缓存，不影响登录与配置。</p>
         <div class="cache-grid" id="cacheStats">
           <div class="cache-stat"><span>系统数据条目</span><b id="cacheRedisKeys">{{ cache_stats.redis_keys }}</b></div>
           <div class="cache-stat"><span>显示记录</span><b id="cacheRecordLogs">{{ cache_stats.record_logs }}</b></div>
@@ -333,12 +333,12 @@
           <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="runtime"><button class="secondary">清空临时缓存</button></form>
         </div>
         <div class="notice-box">
-          <b>说明：</b>“系统数据条目”只是 Redis 里的配置、记录和缓存总数，不需要设置。
+          <b>说明：</b>“系统数据条目”是 Redis 中的配置与记录总数；防重复缓存用于阻止重复消息，会自动过期。
           “防重复缓存”是正在生效的防重复 TTL key，用来挡同码、同抽奖、同注册链接等重复转发，会自动过期。
         </div>
         <details class="danger-zone">
           <summary>高级操作：清空防重复缓存</summary>
-          <p class="hint">清空后，去重时间内已经发过的码、抽奖、注册链接、注册状态再次出现时，可能会重新转发。只在你确定要重置防重复状态时使用。</p>
+          <p class="hint">清空后，已去重的内容可能再次转发。</p>
           <form action="/clear_cache" method="post" data-ajax="1" class="inline-form">
             <input type="hidden" name="kind" value="dedup_cache">
             <input name="confirm_code" placeholder="输入 CLEAR 确认" autocomplete="off">
@@ -349,7 +349,7 @@
     </div>
     <div class="sub-panel records-subpanel">
       <h3>记录中心</h3>
-      <p class="hint">自动刷新；每个分类右上角清自己的记录。</p>
+      <p class="hint">自动刷新，可单独清理记录。</p>
       <div class="tab-shell records-tab-shell inner-record-tabs" data-tabs="records">
   <div class="tab-nav compact-tabs">
     <button type="button" class="tab-btn active" data-tab="hits">命中记录</button>
@@ -361,7 +361,7 @@
   </div>
   <div class="tab-content">
     <div class="tab-panel active" data-panel="hits"><div class="panel-headline"><b>命中记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="hits"><button class="small secondary">清空命中记录</button></form></div><div class="logbox big-logbox" id="hitsBox"></div></div>
-    <div class="tab-panel" data-panel="dedups"><div class="panel-headline"><span><b>去重记录</b><em>只清页面记录，不影响真正的防重复缓存。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="dedup_recent"><button class="small secondary">清空去重记录</button></form></div><p class="hint">点“解除去重”后，同活动下一次命中可重新转发。</p><div class="logbox big-logbox" id="dedupBox"></div></div>
+    <div class="tab-panel" data-panel="dedups"><div class="panel-headline"><span><b>去重记录</b><em>只清理页面记录。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="dedup_recent"><button class="small secondary">清空去重记录</button></form></div><p class="hint">解除去重后，同一内容可再次转发。</p><div class="logbox big-logbox" id="dedupBox"></div></div>
     <div class="tab-panel" data-panel="stats"><div class="panel-headline"><span><b>去重统计与碰撞反馈</b><em>误挡时可标记为不同抽奖。</em></span><form action="/clear_collisions" method="post" data-ajax="1"><button class="small secondary">清空碰撞记录</button></form></div><div class="logbox big-logbox" id="dedupStatsBox"></div><div class="logbox big-logbox" id="collisionBox"></div></div>
     <div class="tab-panel" data-panel="fails"><div class="panel-headline"><b>失败 / 慢转发记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="fails"><button class="small secondary">清空失败记录</button></form></div><div class="logbox big-logbox" id="failsBox"></div></div>
     <div class="tab-panel" data-panel="perf"><div class="panel-headline"><span><b>性能诊断</b><em>只记录命中后的关键耗时，不记录未命中消息。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="perf_events"><button class="small secondary">清空性能诊断</button></form></div><div class="logbox big-logbox" id="perfBox"></div></div>
