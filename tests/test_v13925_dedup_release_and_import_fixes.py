@@ -106,8 +106,8 @@ class DedupReleaseAndImportFixesV13925Tests(unittest.TestCase):
 
     def test_ajax_submit_honors_formaction_for_code_rule_delete(self):
         index = read(APP / "templates" / "index.html")
-        self.assertIn("e.submitter && e.submitter.formAction", index)
-        self.assertIn("const action = (e.submitter && e.submitter.formAction) || form.action;", index)
+        self.assertIn("e.submitter.hasAttribute('formaction')", index)
+        self.assertIn("const action = (e.submitter && e.submitter.hasAttribute('formaction') && e.submitter.formAction) || form.action;", index)
         self.assertIn("fetch(action, {method: form.method || 'POST'", index)
 
 
