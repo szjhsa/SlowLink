@@ -401,6 +401,12 @@ def _page_data() -> dict:
     }
 
 
+
+
+@app.before_request
+def log_regex_request():
+    if request.path == "/regex_test":
+        log_line("info", f"regex_test_before method={request.method} path={request.path}")
 @app.after_request
 def no_store_html(response):
     if str(getattr(response, "content_type", "") or "").startswith("text/html"):
