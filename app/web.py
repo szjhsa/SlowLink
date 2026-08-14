@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import hashlib
 import json
 import secrets
@@ -959,11 +959,16 @@ def release_dedup_route():
     return done("解除失败：未找到对应的去重记录", "warning", ok=False)
 
 
-@app.post("/regex_test")
+@app.route("/regex_test", methods=["GET", "POST"])
 def regex_test():
     gate = require_login()
     if gate:
         return gate
+    if request.method == "GET":
+        if wants_json():
+            return jsonify({"ok": False, "message": "正则测试请使用页面按钮提交", "kind": "warning"}), 400
+        flash_msg("正则测试请使用页面按钮提交", "warning")
+        return redirect(url_for("index"))
     text = request.form.get("text", "")
     try:
         if len(text) > 8192:

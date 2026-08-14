@@ -680,6 +680,7 @@ function bindAjaxForms(){
   document.querySelectorAll('form[data-ajax="1"]').forEach(form => {
     if(form.dataset.bound === '1') return;
     form.dataset.bound = '1';
+    if((form.method||'get').toLowerCase()!=='post'){ form.method = 'post'; }
     if(!form.querySelector('input[name="csrf_token"]')){
       const input = document.createElement('input');
       input.type = 'hidden';
