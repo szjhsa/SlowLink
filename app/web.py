@@ -1344,7 +1344,8 @@ def import_config():
                 elif kind == "set":
                     delete(key)
                     if old:
-                        sadd(key, *old)
+                        for item in old:
+                            sadd(key, str(item))
                 elif kind == "json":
                     if old is None:
                         delete(key)
@@ -1470,7 +1471,10 @@ def plugin_upload():
             raw = request.form.get("plugin_zip", "").encode("utf-8", errors="ignore")
         item = install_plugin(raw)
         activate_plugin(str(item.get("id") or ""))
-        reload_plugin_rules()
+        try:
+            reload_plugin_rules()
+        except Exception:
+            pass
         invalidate_rule_cache()
         clear_ttl_cache()
         try:
@@ -1492,7 +1496,10 @@ def plugin_activate_route():
     plugin_id = request.form.get("plugin_id", "").strip()
     try:
         activate_plugin(plugin_id)
-        reload_plugin_rules()
+        try:
+            reload_plugin_rules()
+        except Exception:
+            pass
         invalidate_rule_cache()
         clear_ttl_cache()
         try:
@@ -1517,7 +1524,10 @@ def plugin_uninstall_route():
         return done("插件删除失败：不存在", "error", ok=False)
     if was_active:
         activate_plugin("")
-    reload_plugin_rules()
+    try:
+        reload_plugin_rules()
+    except Exception:
+        pass
     invalidate_rule_cache()
     clear_ttl_cache()
     try:

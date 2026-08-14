@@ -206,8 +206,11 @@ def sadd(key: str, value: str) -> None:
         r.sadd(key, value)
 
 
-def srem(key: str, value: str) -> None:
-    r.srem(key, value)
+def srem(key: str, value: str) -> bool:
+    try:
+        return bool(r.srem(key, value))
+    except Exception:
+        return False
 
 
 def smembers(key: str) -> set[str]:
