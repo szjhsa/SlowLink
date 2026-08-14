@@ -36,6 +36,7 @@
     "closed_registration_states": ["false", "off", "disabled", "0", "已关闭", "关闭", "未开放"]
   },
   "code_rules": {
+    "enable_strong_codes": true,
     "default_rules": [
       {
         "name": "生成类注册码（已为您生成）",

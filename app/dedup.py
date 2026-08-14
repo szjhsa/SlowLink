@@ -175,6 +175,14 @@ def reload_builtins():
         TTL_DEFAULTS = {"other": 20}
 
 
+def _strong_codes_active() -> bool:
+    try:
+        from code_rules import _strong_codes_enabled
+        return _strong_codes_enabled()
+    except Exception:
+        return True
+
+
 def _lower(text: str) -> str:
     return (text or "").lower()
 
@@ -505,7 +513,7 @@ SOURCE_LINE_HINTS = [
 
 
 def _register_renew_code_fingerprints(text: str) -> list[str]:
-    if not active_rules():
+    if not active_rules() or not _strong_codes_active():
         return []
     fingerprints: list[str] = []
     seen: set[str] = set()
@@ -527,7 +535,7 @@ def _register_renew_code_fingerprints(text: str) -> list[str]:
 
 
 def _invite_path_code_fingerprints(text: str) -> list[str]:
-    if not active_rules():
+    if not active_rules() or not _strong_codes_active():
         return []
     return sorted(
         "ipc" + hashlib.sha256(code.encode("utf-8")).hexdigest()[:16]

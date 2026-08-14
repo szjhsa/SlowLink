@@ -1,7 +1,7 @@
 {
   "id": "builtin",
   "name": "SlowLink 内置规则包",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "min_core_version": "1.1",
   "description": "SlowLink 默认的注册码、抽奖、白名单和去重内置规则",
   "author": "szjhsa"

@@ -110,6 +110,7 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 self.assertEqual(matcher.USAGE_HARD_WORDS, [])
                 self.assertEqual(matcher.CODE_LINE_RE.pattern, "(?!)")
                 self.assertEqual(code_rules.DEFAULT_CODE_RULES, [])
+                self.assertFalse(code_rules._strong_codes_enabled())
                 self.assertEqual(dedup.LOTTERY_KWS, [])
 
                 plugin_registry.PLUGIN_ROOT = original_root
@@ -119,6 +120,7 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 plugin_registry.reload_all()
                 self.assertIn("成功注册", matcher.USAGE_HARD_WORDS)
                 self.assertNotEqual(code_rules.DEFAULT_CODE_RULES, [])
+                self.assertTrue(code_rules._strong_codes_enabled())
                 self.assertIn("抽奖", dedup.LOTTERY_KWS)
             finally:
                 plugin_registry.PLUGIN_ROOT = original_root

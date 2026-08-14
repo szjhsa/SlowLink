@@ -224,6 +224,11 @@ def reload_builtins():
     NEGATIVE_CONTEXT = list(section.get("negative_context") or [])
 
 
+def _strong_codes_enabled() -> bool:
+    section = builtin_section("code_rules", {}) or {}
+    return bool(section.get("enable_strong_codes", False))
+
+
 REGISTER_RENEW_RE = re.compile(SAFE_REGISTER_RENEW_PATTERN, re.I | re.M)
 HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
 WHITELIST_RE = re.compile(SAFE_WHITELIST_PATTERN, re.I | re.M)
@@ -546,7 +551,8 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)
     candidates = [raw, compact] if compact != raw else [raw]
     compiled_rules = _compiled_rules()
-    telegram_start_code = extract_first_telegram_start_register_renew_code(raw)
+    strong_codes = _strong_codes_enabled()
+    telegram_start_code = extract_first_telegram_start_register_renew_code(raw) if strong_codes else ""
     if telegram_start_code:
         direct_rule = {
             "name": "Telegram start Register/Renew 深链",
@@ -571,7 +577,7 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
                 "safe": safe,
                 "safe_reason": safe_reason,
             }
-    invite_path_code = extract_first_invite_path_code(raw)
+    invite_path_code = extract_first_invite_path_code(raw) if strong_codes else ""
     if invite_path_code and not trigger_only:
         return {
             "index": -1,
@@ -586,7 +592,7 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
             "safe": True,
             "safe_reason": "仅辅助去重，需用户正则命中",
         }
-    direct_whitelist = _extract_whitelist_code(raw)
+    direct_whitelist = _extract_whitelist_code(raw) if strong_codes else ""
     if direct_whitelist:
         # Whitelist is an extraction/dedup format only. The main matcher must
         # hit a configured regex or keyword before this detail can be used.
@@ -614,7 +620,7 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
                 "safe": safe,
                 "safe_reason": safe_reason,
             }
-    direct_code = _extract_markdown_register_renew_code(raw)
+    direct_code = _extract_markdown_register_renew_code(raw) if strong_codes else ""
     if direct_code:
         direct_idx, direct_rule = 0, {
             "name": "Register/Renew 完整码",
@@ -645,7 +651,7 @@ def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool =
                 "safe_reason": safe_reason,
             }
 
-    hyphen_code = _extract_hyphen_register_renew_code(raw)
+    hyphen_code = _extract_hyphen_register_renew_code(raw) if strong_codes else ""
     if hyphen_code:
         direct_rule = {
             "name": "Register/Renew 完整码",
@@ -725,45 +731,46 @@ def extract_code_identities(text: str) -> list[str]:
             seen.add(identity)
             identities.append(identity)
 
-    for code in extract_telegram_start_register_renew_codes(raw):
-        push("strong_register_renew:" + code)
-    for code in extract_invite_path_codes(raw):
-        push("url_invite:" + code)
+    if _strong_codes_enabled():
+        for code in extract_telegram_start_register_renew_codes(raw):
+            push("strong_register_renew:" + code)
+        for code in extract_invite_path_codes(raw):
+            push("url_invite:" + code)
 
-    whitelist_rule = {
-        "name": "Whitelist 完整码",
-        "pattern": GUESS_WHITELIST_RE.pattern,
-        "fast": True,
-        "trigger": False,
-        "strict_context": False,
-    }
-    for pattern in (WHITELIST_RE, GUESS_WHITELIST_RE):
-        for candidate in candidates:
-            for match in pattern.finditer(candidate):
+        whitelist_rule = {
+            "name": "Whitelist 完整码",
+            "pattern": GUESS_WHITELIST_RE.pattern,
+            "fast": True,
+            "trigger": False,
+            "strict_context": False,
+        }
+        for pattern in (WHITELIST_RE, GUESS_WHITELIST_RE):
+            for candidate in candidates:
+                for match in pattern.finditer(candidate):
+                    code = _clean_code_value(match.group(0))
+                    if not code:
+                        continue
+                    safe, _safe_reason = _is_safe_code_context(raw, code, whitelist_rule)
+                    if safe:
+                        push(_canonical_code_identity(code, whitelist_rule, raw))
+
+        register_rule = {
+            "name": "Register/Renew 完整码",
+            "pattern": REGISTER_RENEW_RE.pattern,
+            "fast": True,
+            "trigger": False,
+            "strict_context": False,
+        }
+        for line in raw.splitlines():
+            for match in MARKDOWN_REGISTER_RENEW_RE.finditer(line):
+                suffix = re.sub(r"\*+", "", match.group(2) or "")
+                code = _clean_code_value((match.group(1) or "") + suffix)
+                if code and REGISTER_RENEW_RE.search(code):
+                    push(_canonical_code_identity(code, register_rule, raw))
+            for match in HYPHEN_REGISTER_RENEW_RE.finditer(line):
                 code = _clean_code_value(match.group(0))
-                if not code:
-                    continue
-                safe, _safe_reason = _is_safe_code_context(raw, code, whitelist_rule)
-                if safe:
-                    push(_canonical_code_identity(code, whitelist_rule, raw))
-
-    register_rule = {
-        "name": "Register/Renew 完整码",
-        "pattern": REGISTER_RENEW_RE.pattern,
-        "fast": True,
-        "trigger": False,
-        "strict_context": False,
-    }
-    for line in raw.splitlines():
-        for match in MARKDOWN_REGISTER_RENEW_RE.finditer(line):
-            suffix = re.sub(r"\*+", "", match.group(2) or "")
-            code = _clean_code_value((match.group(1) or "") + suffix)
-            if code and REGISTER_RENEW_RE.search(code):
-                push(_canonical_code_identity(code, register_rule, raw))
-        for match in HYPHEN_REGISTER_RENEW_RE.finditer(line):
-            code = _clean_code_value(match.group(0))
-            if code:
-                push(_canonical_code_identity(code, register_rule, raw))
+                if code:
+                    push(_canonical_code_identity(code, register_rule, raw))
 
     for _idx, rule, cre in _compiled_rules():
         for candidate in candidates:
