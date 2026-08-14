@@ -188,6 +188,7 @@
       </div>
       <div class="tab-panel" data-panel="codes">
         <h3>码识别</h3>
+        {% if active_plugin %}
         <div class="code-safe-hero">
           <div>
             <b>强格式保护已开启</b>
@@ -202,9 +203,12 @@
           <div>✓ 注册链接 code 参数</div>
           <div>✓ 同一个完整码跨群只发一次</div>
         </div>
+        {% else %}
+        <p class="hint">纯净模式：内置强格式码识别未启用，你添加的码规则会按原样识别。</p>
+        {% endif %}
         <details class="advanced-box code-advanced">
           <summary>高级码规则设置</summary>
-          <p class="hint">看不懂可以不动。这里只给以后新增特殊码格式用；除完整 Register / Renew 强格式外，转不转发仍然主要看“正则规则”。</p>
+          <p class="hint">{% if active_plugin %}看不懂可以不动。这里只给以后新增特殊码格式用；除完整 Register / Renew 强格式外，转不转发仍然主要看“正则规则”。{% else %}添加你的码识别格式；勾选“允许单独触发”后，命中这条规则的消息可以直接转发。{% endif %}</p>
           <form action="/add_code_rule" method="post" class="code-rule-form" data-ajax="1">
             <input name="name" placeholder="规则名称，例如 VIP 邀请码">
             <input name="pattern" placeholder="识别正则，例如 VIP-[A-Za-z0-9-]+">
@@ -214,7 +218,7 @@
             <label class="inline-check danger-inline"><input type="checkbox" name="trigger" value="1"> 允许这条码规则单独触发转发</label>
             <button>添加码规则</button>
           </form>
-          <div class="button-row compact-actions"><form action="/reset_code_rules" method="post" data-ajax="1"><button class="secondary small">恢复默认码规则</button></form></div>
+          <div class="button-row compact-actions"><form action="/reset_code_rules" method="post" data-ajax="1"><button class="secondary small">{% if active_plugin %}恢复默认码规则{% else %}清空码识别规则{% endif %}</button></form></div>
           <div class="collapse-box open-lite"><div class="summary-lite">当前码识别规则：<span id="codeRuleCount">{{ code_rules|length }}</span> 条</div><div class="compact-list code-rule-list" id="codeRuleList"></div></div>
         </details>
       </div>
@@ -230,6 +234,7 @@
             </select>
           </label>
           {% set opts = [('0','不去重'),('5','5分钟'),('10','10分钟'),('15','15分钟'),('20','20分钟'),('30','30分钟'),('60','1小时'),('180','3小时'),('360','6小时'),('720','12小时'),('1440','1天'),('4320','3天'),('10080','7天'),('20160','14天')] %}
+          {% if active_plugin %}
           <div class="dedup-grid">
             <label>注册 / 开注<select name="dedup_register_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_register_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
             <label>邀请码 / 注册码<select name="dedup_invite_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_invite_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
@@ -247,6 +252,10 @@
             <label>其它类型<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
           </div>
           <p class="hint">抽奖类默认不再使用“高度相似”去重。有抽奖 ID 时按上面的“抽奖唯一字段”生成 key；没有 ID 时才用参与关键词、奖品、简介、创建者兜底。</p>
+          {% else %}
+          <label>普通文本去重<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+          <p class="hint">纯净模式按标准化后的文本内容去重，不区分注册码、抽奖、邀请码等类型。</p>
+          {% endif %}
           <button>保存去重策略</button>
         </form>
       </div>

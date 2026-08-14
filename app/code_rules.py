@@ -10,12 +10,17 @@ from telegram_start_links import (
     extract_first_telegram_start_register_renew_code,
     extract_telegram_start_register_renew_codes,
 )
-from plugin_registry import active_rules, builtin_section
+from plugin_registry import active_plugin_id, active_rules, builtin_section
 
 CODE_RULES_KEY = "code_rules"
+PURE_CODE_RULES_KEY = "code_rules_pure"
 CODE_RULE_MATCH_TIMEOUT_SECONDS = 0.05
 
 LEGACY_MASKED_REGISTER_SUFFIX_PATTERN = r"(?:[A-Za-z0-9_-]|数字|字母)+"
+
+
+def _rules_key() -> str:
+    return CODE_RULES_KEY if active_plugin_id() else PURE_CODE_RULES_KEY
 LEGACY_REGISTER_SUFFIX_BOUNDARY = (
     r"(?=$|\s|[，。！？？；：、）】]"
     r"|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
@@ -199,6 +204,7 @@ NEGATIVE_CONTEXT = [
 def reload_builtins():
     """Load built-in code rules and context vocabularies from the plugin."""
     global DEFAULT_CODE_RULES, POSITIVE_CONTEXT, STRONG_POSITIVE_CONTEXT, NEGATIVE_CONTEXT
+    _CACHE.update({"ts": 0.0, "raw": None, "compiled": []})
 
     section = builtin_section("code_rules", {}) or {}
     if not active_rules():
@@ -268,11 +274,14 @@ def _normalize_rule(rule: dict[str, Any]) -> dict[str, Any]:
 
 def get_code_rules() -> list[dict[str, Any]]:
     try:
-        rules = get_json(CODE_RULES_KEY, None)
+        rules = get_json(_rules_key(), None)
     except Exception:
         rules = None
     if not rules:
-        rules = DEFAULT_CODE_RULES
+        if active_plugin_id():
+            rules = DEFAULT_CODE_RULES
+        else:
+            return []
     out = []
     migrated = False
     for rule in rules:
@@ -294,12 +303,18 @@ def save_code_rules(rules: list[dict[str, Any]]) -> None:
             item = _normalize_rule(rule)
             if item["pattern"] and "8位十六进制" not in item.get("name", ""):
                 cleaned.append(item)
-    set_json(CODE_RULES_KEY, cleaned or list(DEFAULT_CODE_RULES))
+    if active_plugin_id():
+        set_json(_rules_key(), cleaned or list(DEFAULT_CODE_RULES))
+    else:
+        set_json(_rules_key(), cleaned)
     _CACHE.update({"ts": 0.0, "raw": None, "compiled": []})
 
 
 def reset_code_rules() -> None:
-    save_code_rules(list(DEFAULT_CODE_RULES))
+    if active_plugin_id():
+        save_code_rules(list(DEFAULT_CODE_RULES))
+    else:
+        save_code_rules([])
 
 
 def add_code_rule(name: str, pattern: str, group: str = "0", fast: bool = True, trigger: bool = False, strict_context: bool = True) -> None:
@@ -426,6 +441,8 @@ def _is_safe_code_context(text: str, code: str, rule: dict[str, Any]) -> tuple[b
     重点：不要让验证码、参与码、接口 token、普通链接 code= 混进来。
     Register/Renew 和固定十位 Whitelist 强格式天然安全；其它宽泛规则必须有注册/邀请上下文。
     """
+    if not active_plugin_id():
+        return True, "纯净模式用户码规则"
     raw = _normalize_text(text)
     code = code or ""
     rule_name = str(rule.get("name") or "")
@@ -545,8 +562,6 @@ def normalize_code_identity(identity: str) -> str:
 
 
 def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool = True) -> dict[str, Any]:
-    if not active_rules():
-        return {}
     raw = text or ""
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)
     candidates = [raw, compact] if compact != raw else [raw]
@@ -718,8 +733,6 @@ def extract_trigger_code_detail(text: str) -> dict[str, Any]:
 
 def extract_code_identities(text: str) -> list[str]:
     """Return stable identities for every recognized code in one message."""
-    if not active_rules():
-        return []
     raw = text or ""
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)
     candidates = [raw, compact] if compact != raw else [raw]

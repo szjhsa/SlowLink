@@ -946,6 +946,19 @@ def save_dedup():
     if mode not in {"strict", "balanced", "loose"}:
         mode = "strict"
     set_value("dedup_mode", mode)
+    if not active_plugin_id():
+        allowed = {"0", "5", "10", "15", "20", "30", "60", "180", "360", "720", "1440", "4320", "10080", "20160"}
+        other = request.form.get("dedup_other_minutes", "20")
+        if other not in allowed:
+            other = "20"
+        set_value("dedup_other_minutes", other)
+        set_value("dedup_minutes", other)
+        clear_ttl_cache()
+        try:
+            manager.clear_runtime_cache()
+        except Exception:
+            pass
+        return done("去重策略已保存", "success")
     lottery_key_mode = request.form.get("dedup_lottery_key_mode", "id")
     if lottery_key_mode not in {"id", "id_keyword", "id_prize_keyword"}:
         lottery_key_mode = "id"
