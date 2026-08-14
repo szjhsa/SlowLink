@@ -29,7 +29,7 @@ def _pure_mode() -> bool:
     return os.getenv("SLOWLINK_PURE_MODE", "0") == "1"
 
 
-def _redis_value(key: str, default: str) -> str:
+def _redis_value(key: str, default=None):
     if _pure_mode():
         return default
     try:
@@ -47,13 +47,16 @@ def active_plugin_id() -> str:
         return ""
     env_id = (os.getenv("SLOWLINK_ACTIVE_PLUGIN") or "").strip()
     if env_id:
-        return env_id
-    redis_id = _redis_value(ACTIVE_PLUGIN_KEY, DEFAULT_PLUGIN).strip()
+        if env_id in {"", "none", "off"}:
+            return ""
+        return env_id if (plugin_dir(env_id) / "plugin.json").exists() else ""
+    redis_id = _redis_value(ACTIVE_PLUGIN_KEY, None)
+    if redis_id is None:
+        return DEFAULT_PLUGIN if (PLUGIN_ROOT / DEFAULT_PLUGIN / "plugin.json").exists() else ""
+    redis_id = str(redis_id).strip()
     if redis_id in {"", "none", "off"}:
         return ""
-    if redis_id:
-        return redis_id
-    return DEFAULT_PLUGIN if (PLUGIN_ROOT / DEFAULT_PLUGIN / "plugin.json").exists() else ""
+    return redis_id if (plugin_dir(redis_id) / "plugin.json").exists() else ""
 
 
 def plugin_dir(plugin_id: str) -> Path:

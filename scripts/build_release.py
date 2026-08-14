@@ -30,6 +30,7 @@ FORBIDDEN_PARTS = {
     "backups",
     "data",
     "dist",
+    "plugins",
     "sessions",
 }
 FORBIDDEN_SUFFIXES = {

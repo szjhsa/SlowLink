@@ -8,6 +8,7 @@ backups
 backup
 dist
 docs
+app/plugins
 tests
 V1.*
 *.session
