@@ -55,6 +55,15 @@ class PluginRegistryV110Tests(unittest.TestCase):
         dedup = plugin_registry.builtin_section("dedup")
         self.assertIn("刮刮乐", dedup.get("lottery_keywords") or [])
 
+    def test_off_means_no_active_plugin(self):
+        os.environ.pop("SLOWLINK_ACTIVE_PLUGIN", None)
+        original_redis_value = plugin_registry._redis_value
+        plugin_registry._redis_value = lambda key, default: "off"
+        try:
+            self.assertEqual(plugin_registry.active_plugin_id(), "")
+        finally:
+            plugin_registry._redis_value = original_redis_value
+
     def test_invalid_zip_is_rejected(self):
         with self.assertRaises(ValueError):
             plugin_registry.install_plugin(b"not a zip")

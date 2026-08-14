@@ -33,8 +33,10 @@ def _redis_value(key: str, default: str) -> str:
         return default
     try:
         from redis_store import get
-        value = get(key, default)
-        return str(value or default)
+        value = get(key, None)
+        if value is None:
+            return default
+        return str(value)
     except Exception:
         return default
 
@@ -45,7 +47,9 @@ def active_plugin_id() -> str:
     env_id = (os.getenv("SLOWLINK_ACTIVE_PLUGIN") or "").strip()
     if env_id:
         return env_id
-    redis_id = (_redis_value(ACTIVE_PLUGIN_KEY, DEFAULT_PLUGIN) or "").strip()
+    redis_id = _redis_value(ACTIVE_PLUGIN_KEY, DEFAULT_PLUGIN).strip()
+    if redis_id in {"", "none", "off"}:
+        return ""
     if redis_id:
         return redis_id
     return DEFAULT_PLUGIN if (PLUGIN_ROOT / DEFAULT_PLUGIN / "plugin.json").exists() else ""
