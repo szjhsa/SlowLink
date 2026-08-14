@@ -62,6 +62,7 @@ sudo sh /tmp/slowlink-install.sh --http --port 18080
 | 文本排除 | 消息包含任意排除关键词时，在正则和码识别前直接忽略 |
 | 准确去重 | 按实际邀请码与消息特征去重，保留必要的重复日志 |
 | 优先队列 | 对重点来源优先处理，降低高消息量时的排队延迟 |
+| 规则插件 | 内置注册码、抽奖、白名单和去重规则打包成独立插件，可上传替换 |
 | Web 管理 | 管理登录、监听、规则、状态与运行日志，支持域名 HTTPS |
 | 自动恢复 | 容器或主机重启后，根据 Redis 状态恢复监听 |
 | CPU 保护 | 持续高 CPU 时记录诊断并只重启应用容器 |
@@ -98,6 +99,17 @@ flowchart LR
 | `sudo /opt/slowlink/deploy/manage.sh uninstall` | 卸载程序并保留数据 |
 | `sudo /opt/slowlink/deploy/manage.sh purge` | 二次确认后彻底删除 SlowLink |
 
+## 规则插件
+
+SlowLink 1.1 起把“内置规则”从核心引擎中分离出来：核心只负责监听、识别执行、去重执行、转发和网页管理，具体的内置注册码格式、抽奖模板、白名单规则、活动关键词和去重参数放在独立的规则插件包里。
+
+- 默认内置插件：`app/plugins/builtin/`，行为和 1.0 一致。
+- 网页“工具与备份 → 规则插件”可以上传 `.zip` 插件包并立即启用。
+- 插件包必须包含 `plugin.json` 和 `rules.json`；上传后会校验版本、路径和格式。
+- 纯净版可以不带任何插件运行，上传插件后即可恢复成对应专属规则。
+
+插件仓库：[szjhsa/SlowLink-Plugins](https://github.com/szjhsa/SlowLink-Plugins)
+
 ## 数据与稳定性
 
 - 更新只重建 `slowlink_app`；正常运行且域名未变的 `slowlink_caddy` 会保持不动，也不会停止 `slowlink_redis` 或主机上的其他服务。
@@ -125,6 +137,7 @@ flowchart LR
 ```text
 slowlink/
 ├── app/                    # SlowLink 应用与 Web 界面
+│   └── plugins/            # 内置与上传的规则插件包
 ├── docs/                   # 运维文档
 ├── scripts/                # 发布构建与安装公共逻辑
 ├── tests/                  # 回归测试

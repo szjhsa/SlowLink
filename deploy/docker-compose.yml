@@ -37,6 +37,7 @@ services:
       - "${SLOWLINK_BIND_HOST:-0.0.0.0}:${SLOWLINK_WEB_PORT:-8080}:8080"
     volumes:
       - ../data/sessions:/app/sessions
+      - ../data/plugins:/app/plugins/user
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379

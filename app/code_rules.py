@@ -10,6 +10,7 @@ from telegram_start_links import (
     extract_first_telegram_start_register_renew_code,
     extract_telegram_start_register_renew_codes,
 )
+from plugin_registry import active_rules, builtin_section
 
 CODE_RULES_KEY = "code_rules"
 CODE_RULE_MATCH_TIMEOUT_SECONDS = 0.05
@@ -193,6 +194,36 @@ NEGATIVE_CONTEXT = [
     "tuic", "vless", "vmess", "trojan", "shadowsocks", "hysteria", "wireguard",
     "skip-cert-verify", "congestion-controller", "udp-relay-mode", "alpn",
 ]
+
+
+def reload_builtins():
+    """Load built-in code rules and context vocabularies from the plugin."""
+    global DEFAULT_CODE_RULES, POSITIVE_CONTEXT, STRONG_POSITIVE_CONTEXT, NEGATIVE_CONTEXT
+
+    section = builtin_section("code_rules", {}) or {}
+    if not active_rules():
+        DEFAULT_CODE_RULES = []
+        POSITIVE_CONTEXT = []
+        STRONG_POSITIVE_CONTEXT = []
+        NEGATIVE_CONTEXT = []
+        return
+
+    plugin_defaults = section.get("default_rules")
+    if isinstance(plugin_defaults, list) and plugin_defaults:
+        cleaned = []
+        for rule in plugin_defaults:
+            if isinstance(rule, dict):
+                item = _normalize_rule(rule)
+                if item["pattern"] and "8位十六进制" not in item.get("name", ""):
+                    cleaned.append(item)
+        if cleaned:
+            DEFAULT_CODE_RULES = cleaned
+    POSITIVE_CONTEXT = list(section.get("positive_context") or POSITIVE_CONTEXT)
+    STRONG_POSITIVE_CONTEXT = list(
+        section.get("strong_positive_context") or STRONG_POSITIVE_CONTEXT
+    )
+    NEGATIVE_CONTEXT = list(section.get("negative_context") or NEGATIVE_CONTEXT)
+
 
 REGISTER_RENEW_RE = re.compile(SAFE_REGISTER_RENEW_PATTERN, re.I | re.M)
 HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
@@ -510,6 +541,8 @@ def normalize_code_identity(identity: str) -> str:
 
 
 def extract_code_detail(text: str, trigger_only: bool = False, safe_only: bool = True) -> dict[str, Any]:
+    if not active_rules():
+        return {}
     raw = text or ""
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)
     candidates = [raw, compact] if compact != raw else [raw]
@@ -680,6 +713,8 @@ def extract_trigger_code_detail(text: str) -> dict[str, Any]:
 
 def extract_code_identities(text: str) -> list[str]:
     """Return stable identities for every recognized code in one message."""
+    if not active_rules():
+        return []
     raw = text or ""
     compact = re.sub(r"[\s\u200b\u200c\u200d\ufeff\u2060]+", "", raw)
     candidates = [raw, compact] if compact != raw else [raw]
@@ -761,3 +796,6 @@ def code_rule_diagnostics() -> list[dict[str, Any]]:
         except _regex.error as e:
             out.append({"index": i, "ok": False, **rule, "error": str(e)})
     return out
+
+
+reload_builtins()

@@ -1,3 +1,4 @@
+import json
 import re
 import sys
 import time
@@ -126,9 +127,12 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
 
     def test_whitelist_messages_use_priority_queue(self):
         source = (APP / "bot_runner.py").read_text(encoding="utf-8-sig")
+        rules = json.loads(
+            (APP / "plugins" / "builtin" / "rules.json").read_text(encoding="utf-8-sig")
+        )
 
-        priority = source[source.index("is_priority = any(") : source.index("if is_priority")]
-        self.assertIn('"whitelist"', priority)
+        self.assertIn("whitelist", rules["flow"]["priority_keywords"])
+        self.assertIn("priority_keywords = _plugin_builtin_value", source)
 
     def test_page_documents_builtin_whitelist_protection(self):
         source = (APP / "templates" / "index.html").read_text(encoding="utf-8-sig")

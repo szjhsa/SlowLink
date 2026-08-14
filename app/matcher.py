@@ -5,6 +5,7 @@ import regex as _regex
 from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
 from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
+from plugin_registry import active_rules, builtin_section
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
@@ -82,6 +83,63 @@ REGISTRATION_SUCCESS_RE = re.compile(
     re.I,
 )
 REGISTRATION_ACCOUNT_MARKERS = ["创建了", "账号有效期", "到期时间"]
+
+
+def reload_builtins():
+    """Load built-in matcher guards from the active plugin rule pack."""
+    global USAGE_HARD_WORDS
+    global CODE_LINE_RE, HYPHEN_REGISTER_RENEW_RE, INV_CODE_RE, USAGE_STATUS_RE
+    global CLOSED_REGISTER_RE, REGISTRATION_STATUS_RE, EXHAUSTED_REGISTER_RE
+    global REGISTRATION_SUCCESS_RE, REGISTRATION_ACCOUNT_MARKERS
+    global OPEN_REGISTRATION_STATES, CLOSED_REGISTRATION_STATES
+
+    section = builtin_section("matcher", {}) or {}
+    has_plugin = bool(active_rules())
+    if not has_plugin:
+        never = re.compile(r"(?!)", re.I)
+        USAGE_HARD_WORDS = []
+        CODE_LINE_RE = never
+        HYPHEN_REGISTER_RENEW_RE = never
+        INV_CODE_RE = never
+        USAGE_STATUS_RE = never
+        CLOSED_REGISTER_RE = never
+        REGISTRATION_STATUS_RE = never
+        EXHAUSTED_REGISTER_RE = never
+        REGISTRATION_SUCCESS_RE = never
+        REGISTRATION_ACCOUNT_MARKERS = []
+        OPEN_REGISTRATION_STATES = set()
+        CLOSED_REGISTRATION_STATES = set()
+        return
+
+    USAGE_HARD_WORDS = list(section.get("usage_hard_words") or USAGE_HARD_WORDS)
+    CODE_LINE_RE = re.compile(section.get("code_line_pattern") or CODE_LINE_RE.pattern, re.I)
+    HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
+    INV_CODE_RE = re.compile(section.get("inv_code_pattern") or INV_CODE_RE.pattern, re.I)
+    USAGE_STATUS_RE = re.compile(section.get("usage_status_pattern") or USAGE_STATUS_RE.pattern, re.I)
+    CLOSED_REGISTER_RE = re.compile(
+        section.get("closed_register_pattern") or CLOSED_REGISTER_RE.pattern,
+        re.I,
+    )
+    REGISTRATION_STATUS_RE = re.compile(
+        section.get("registration_status_pattern") or REGISTRATION_STATUS_RE.pattern,
+        re.I,
+    )
+    EXHAUSTED_REGISTER_RE = re.compile(
+        section.get("exhausted_register_pattern") or EXHAUSTED_REGISTER_RE.pattern,
+        re.I,
+    )
+    REGISTRATION_SUCCESS_RE = re.compile(
+        section.get("registration_success_pattern") or REGISTRATION_SUCCESS_RE.pattern,
+        re.I,
+    )
+    REGISTRATION_ACCOUNT_MARKERS = list(
+        section.get("registration_account_markers") or REGISTRATION_ACCOUNT_MARKERS
+    )
+    OPEN_REGISTRATION_STATES = set(section.get("open_registration_states") or OPEN_REGISTRATION_STATES)
+    CLOSED_REGISTRATION_STATES = set(
+        section.get("closed_registration_states") or CLOSED_REGISTRATION_STATES
+    )
+
 
 def _rich_text(node, depth: int = 0) -> str:
     if node is None or depth > 20:
@@ -521,3 +579,6 @@ def match_rule_details(text: str) -> dict:
         "code_note": ("已识别完整码，但默认仅辅助去重，不触发转发" if code_detail else ""),
         "original": original, "normalized": normalized, "compact": compact,
     }
+
+
+reload_builtins()

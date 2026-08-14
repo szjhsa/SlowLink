@@ -25,6 +25,7 @@ from code_rules import extract_code_identities, normalize_code_identity
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
 import json as _json
 from telegram_session_lock import SESSION_LOCK
+from plugin_registry import builtin_value as _plugin_builtin_value
 
 
 TELEGRAM_DELAY_HIGH_SECONDS = 30
@@ -562,7 +563,8 @@ class BotManager:
                 try: raw_text = get_text(event.message)
                 except Exception: raw_text = ""
                 low_text = raw_text.lower()
-                is_priority = any(k in low_text for k in ["register", "renew", "whitelist", "抽奖", "开放注册", "自由注册", "开注", "邀请码", "注册码", "已为您生成", "总注册限制", "已注册人数", "剩余可注册", "开启注册", "定时注册"])
+                priority_keywords = _plugin_builtin_value("flow", "priority_keywords", [])
+                is_priority = any(k in low_text for k in priority_keywords)
                 if is_priority and self.priority_queue:
                     self.priority_queue.put_nowait(payload)
                     self._flow_counters["enqueued"] += 1

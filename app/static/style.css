@@ -218,11 +218,15 @@ body.dark pre { background: rgba(255,255,255,.08); }
 .tab-panel h4 { margin: 0 0 10px; font-size: 15px; }
 .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .backup-box { border: 1px solid rgba(127,127,127,.18); border-radius: 12px; padding: 12px; background: rgba(127,127,127,.04); }
+.plugin-box { border: 1px solid rgba(127,127,127,.18); border-radius: 12px; padding: 12px; margin-top: 12px; background: rgba(127,127,127,.04); }
+.plugin-box .compact-list { margin-top: 8px; }
+.plugin-box .row { justify-content: space-between; align-items: center; }
 .big-logbox { max-height: 460px; }
 .compact-tabs { position: static; }
 .rule-list .item span { white-space: pre-wrap; }
 .muted { color: #777; }
 body.dark .tab-nav, body.dark .tab-content, body.dark .backup-box { background: #10141b; border-color: #2a303a; }
+body.dark .plugin-box { background: #10141b; border-color: #2a303a; }
 body.dark .tab-btn:hover { background: #1d2a3c; }
 body.dark .muted { color: #a9b1bd; }
 body.dark input[type="file"] { background: #10141b; color: #e6e8eb; border: 1px solid #343b48; border-radius: 9px; padding: 10px; }

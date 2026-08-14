@@ -9,6 +9,7 @@ from invite_path_codes import extract_invite_path_codes
 from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from redis_store import r, sha, format_time
 from telegram_start_links import extract_telegram_start_register_renew_codes
+from plugin_registry import active_rules, builtin_section
 
 try:
     from redis_store import add_lottery_collision as _add_lottery_collision
@@ -116,6 +117,62 @@ LOTTERY_SEED_RE = re.compile(
     re.I,
 )
 LOTTERY_TEMPLATE_WINDOW_SECONDS = 10 * 60
+TTL_DEFAULTS = {
+    "register": 20,
+    "invite": 0,
+    "code": 20,
+    "lottery": 720,
+    "joint_lottery": 4320,
+    "long_term": 10080,
+    "other": 20,
+}
+
+
+def reload_builtins():
+    """Load built-in activity keywords and lottery markers from the plugin."""
+    global REGISTER_KWS, LOTTERY_KWS, JOINT_LOTTERY_KWS, LONG_TERM_KWS, INVITE_KWS
+    global LOTTERY_ID_RE, LOTTERY_SEED_RE, LOTTERY_SECTION_LABELS, SOURCE_LINE_HINTS
+    global TTL_DEFAULTS
+
+    section = builtin_section("dedup", {}) or {}
+    if not active_rules():
+        never = re.compile(r"(?!)", re.I)
+        REGISTER_KWS = []
+        LOTTERY_KWS = []
+        JOINT_LOTTERY_KWS = []
+        LONG_TERM_KWS = []
+        INVITE_KWS = []
+        LOTTERY_ID_RE = never
+        LOTTERY_SEED_RE = never
+        LOTTERY_SECTION_LABELS = ()
+        SOURCE_LINE_HINTS = []
+        TTL_DEFAULTS = {"other": 20}
+        return
+
+    REGISTER_KWS = list(section.get("register_keywords") or REGISTER_KWS)
+    LOTTERY_KWS = list(section.get("lottery_keywords") or LOTTERY_KWS)
+    JOINT_LOTTERY_KWS = list(section.get("joint_lottery_keywords") or JOINT_LOTTERY_KWS)
+    LONG_TERM_KWS = list(section.get("long_term_keywords") or LONG_TERM_KWS)
+    INVITE_KWS = list(section.get("invite_keywords") or INVITE_KWS)
+    LOTTERY_ID_RE = re.compile(
+        section.get("lottery_id_pattern") or LOTTERY_ID_RE.pattern,
+        re.I,
+    )
+    LOTTERY_SEED_RE = re.compile(
+        section.get("lottery_seed_pattern") or LOTTERY_SEED_RE.pattern,
+        re.I,
+    )
+    labels = section.get("lottery_section_labels")
+    if isinstance(labels, list) and labels:
+        LOTTERY_SECTION_LABELS = tuple(labels)
+    hints = section.get("source_line_hints")
+    if isinstance(hints, list) and hints:
+        SOURCE_LINE_HINTS = list(hints)
+    ttl_defaults = section.get("ttl_defaults")
+    if isinstance(ttl_defaults, dict) and ttl_defaults:
+        merged = dict(TTL_DEFAULTS)
+        merged.update({str(k): int(v) for k, v in ttl_defaults.items()})
+        TTL_DEFAULTS = merged
 
 
 def _lower(text: str) -> str:
@@ -392,15 +449,7 @@ def extract_lottery_global_identity(text: str) -> str:
 
 
 def ttl_minutes_for_activity(activity: str, fallback: int | None = None) -> int:
-    defaults = {
-        "register": 20,
-        "invite": 0,
-        "code": 20,
-        "lottery": 720,
-        "joint_lottery": 4320,
-        "long_term": 10080,
-        "other": 20,
-    }
+    defaults = dict(TTL_DEFAULTS)
     keys = {
         "register": "dedup_register_minutes",
         "invite": "dedup_invite_minutes",
@@ -456,6 +505,8 @@ SOURCE_LINE_HINTS = [
 
 
 def _register_renew_code_fingerprints(text: str) -> list[str]:
+    if not active_rules():
+        return []
     fingerprints: list[str] = []
     seen: set[str] = set()
     codes = [
@@ -476,6 +527,8 @@ def _register_renew_code_fingerprints(text: str) -> list[str]:
 
 
 def _invite_path_code_fingerprints(text: str) -> list[str]:
+    if not active_rules():
+        return []
     return sorted(
         "ipc" + hashlib.sha256(code.encode("utf-8")).hexdigest()[:16]
         for code in extract_invite_path_codes(text)
@@ -841,3 +894,6 @@ def release_dedup(dedup_id: str) -> bool:
     deleted = r.delete(*[k for k in set(keys) if k])
     _push_recent({"action": "release", "dedup_id": dedup_id, "reason": "手动解除去重"})
     return bool(deleted)
+
+
+reload_builtins()

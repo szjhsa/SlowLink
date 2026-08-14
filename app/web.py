@@ -23,6 +23,15 @@ from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
 from matcher import analyze_message, rule_diagnostics, invalidate_rule_cache
 from code_rules import add_code_rule, code_rule_diagnostics, delete_code_rule, get_code_rules, reset_code_rules, save_code_rules, update_code_rule
+from plugin_registry import (
+    activate_plugin,
+    active_plugin_id,
+    install_plugin,
+    list_plugins,
+    manifest as plugin_manifest,
+    reload_all as reload_plugin_rules,
+    uninstall_plugin,
+)
 from redis_store import (
     add_fail,
     cache_stats,
@@ -351,6 +360,9 @@ def _state_payload(light: bool = False) -> dict:
         "daily_stats": _daily_stats_safe(),
         "dedup_stats": _dedup_stats(),
         "collisions": _list_collisions(30),
+        "active_plugin": active_plugin_id(),
+        "plugins": list_plugins(),
+        "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
     }
     if not light:
         data["dialog_cache"] = dialogs
@@ -398,6 +410,9 @@ def _page_data() -> dict:
         "cache_stats": cache_stats(),
         "heartbeat": _heartbeat_payload(),
         "display_timezone": "Asia/Shanghai",
+        "active_plugin": active_plugin_id(),
+        "plugins": list_plugins(),
+        "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
     }
 
 
@@ -1280,6 +1295,76 @@ def import_config():
     except Exception as e:
         add_fail({"stage": "import_config", "error": str(e)})
         return done(f"导入配置失败：{e}", "error", ok=False)
+
+
+@app.post("/plugin_upload")
+def plugin_upload():
+    gate = require_login()
+    if gate:
+        return gate
+    try:
+        upload = request.files.get("plugin_file")
+        raw = b""
+        if upload and upload.filename:
+            raw = upload.read()
+        if not raw:
+            raw = request.form.get("plugin_zip", "").encode("utf-8", errors="ignore")
+        item = install_plugin(raw)
+        activate_plugin(str(item.get("id") or ""))
+        reload_plugin_rules()
+        invalidate_rule_cache()
+        clear_ttl_cache()
+        try:
+            manager.clear_runtime_cache()
+        except Exception:
+            pass
+        push_event("success", f"插件已安装并启用：{item.get('name')} v{item.get('version')}")
+        return done(f"插件已安装并启用：{item.get('name')} v{item.get('version')}", "success")
+    except Exception as e:
+        add_fail({"stage": "plugin_upload", "error": str(e)})
+        return done(f"插件安装失败：{e}", "error", ok=False)
+
+
+@app.post("/plugin_activate")
+def plugin_activate_route():
+    gate = require_login()
+    if gate:
+        return gate
+    plugin_id = request.form.get("plugin_id", "").strip()
+    try:
+        activate_plugin(plugin_id)
+        reload_plugin_rules()
+        invalidate_rule_cache()
+        clear_ttl_cache()
+        try:
+            manager.clear_runtime_cache()
+        except Exception:
+            pass
+        return done(f"插件已切换：{plugin_id or '内置默认'}", "success")
+    except Exception as e:
+        return done(f"插件切换失败：{e}", "error", ok=False)
+
+
+@app.post("/plugin_uninstall")
+def plugin_uninstall_route():
+    gate = require_login()
+    if gate:
+        return gate
+    plugin_id = request.form.get("plugin_id", "").strip()
+    if not plugin_id:
+        return done("缺少插件 ID", "error", ok=False)
+    if plugin_id == active_plugin_id():
+        activate_plugin("")
+    if uninstall_plugin(plugin_id):
+        reload_plugin_rules()
+        invalidate_rule_cache()
+        clear_ttl_cache()
+        try:
+            manager.clear_runtime_cache()
+        except Exception:
+            pass
+        return done(f"插件已卸载：{plugin_id}", "success")
+    return done("插件卸载失败：不存在或不允许卸载", "error", ok=False)
 
 
 @app.post("/clear_logs")
