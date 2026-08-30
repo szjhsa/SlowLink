@@ -25,6 +25,7 @@ usage() {
   update     更新到最新 GitHub Release
   web        切换域名 HTTPS 或 IP + 端口 HTTP
   backup     备份配置、Telegram Session 和 Redis 数据
+  doctor     一键检查容器、健康、插件、磁盘和公网
   uninstall  卸载程序并保留配置和数据
   purge      彻底删除 SlowLink 自有资源
 EOF
@@ -44,7 +45,7 @@ show_status() {
   printf '网页端口：%s\n' "$SLOWLINK_WEB_PORT"
   printf '网页地址：%s\n' "$(web_access_url)"
   if [ "$SLOWLINK_WEB_MODE" = "https" ]; then
-    printf 'HTTPS 代理：%s\n' "$(docker inspect "$CADDY_CONTAINER" --format '{{.State.Status}}' 2>/dev/null || printf '未运行')"
+    printf 'HTTPS 代理：%s\n' "$(docker inspect "$CADDY_CONTAINER" --format '{{.State.Status}} / {{if .State.Health}}{{.State.Health.Status}}{{else}}无健康检查{{end}}' 2>/dev/null || printf '未运行')"
   fi
   if docker inspect "$APP_CONTAINER" >/dev/null 2>&1; then
     docker inspect "$APP_CONTAINER" --format '应用：{{.State.Status}} / {{if .State.Health}}{{.State.Health.Status}}{{else}}无健康检查{{end}}，重启={{.RestartCount}}，OOM={{.State.OOMKilled}}'
@@ -219,6 +220,38 @@ backup_runtime() {
   tar -C "$backup_stage/runtime" -czf "$backup_file" . || die "创建备份压缩包失败"
   chmod 600 "$backup_file"
   log "备份完成：$backup_file"
+  ls -1t "$BACKUP_DIR"/slowlink_backup_*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm -f -- || true
+}
+
+doctor() {
+  printf '== SlowLink doctor ==\n'
+  printf '版本：%s\n' "$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || printf '未知')"
+  printf '磁盘：%s\n' "$(df -h / | tail -n 1)"
+  printf '内存：%s\n' "$(free -m | awk 'NR==2 {printf "%d/%d MB", $3, $2}')"
+  printf '容器：\n'
+  for c in "$APP_CONTAINER" "$REDIS_CONTAINER" "$CADDY_CONTAINER"; do
+    if docker inspect "$c" >/dev/null 2>&1; then
+      docker inspect "$c" --format "  $c: {{.State.Status}} / {{if .State.Health}}{{.State.Health.Status}}{{else}}无健康检查{{end}}" 2>/dev/null || true
+    else
+      printf '  %s: 未运行\n' "$c"
+    fi
+  done
+  printf 'Caddyfile：%s\n' "$(file -b "$INSTALL_DIR/deploy/ops/Caddyfile" 2>/dev/null || printf '缺失')"
+  printf '插件：%s\n' "$(docker exec "$APP_CONTAINER" python -c 'import sys; sys.path.insert(0,"/app"); import plugin_registry; print(plugin_registry.active_plugin_id())' 2>/dev/null || printf '不可用')"
+  printf 'watchdog：%s\n' "$(systemctl is-active "$WATCHDOG_SERVICE" 2>/dev/null || printf 'inactive')"
+  web_port_value=$(read_web_port)
+  if [ "$(read_web_mode)" = "https" ]; then
+    domain=$(read_web_domain)
+    if curl -fsS --connect-timeout 5 --max-time 10 --resolve "$domain:443:127.0.0.1" "https://$domain/health" >/dev/null 2>&1; then
+      printf '公网：OK\n'
+    else
+      printf '公网：FAIL\n'
+    fi
+  elif curl -fsS --connect-timeout 5 --max-time 10 "http://127.0.0.1:$web_port_value/health" >/dev/null 2>&1; then
+    printf '网页：OK\n'
+  else
+    printf '网页：FAIL\n'
+  fi
 }
 
 require_root
@@ -245,6 +278,9 @@ case "$1" in
     ;;
   backup)
     backup_runtime
+    ;;
+  doctor)
+    doctor
     ;;
   uninstall)
     exec "$INSTALL_DIR/deploy/uninstall.sh"

@@ -79,7 +79,7 @@ class DistributionSystemTests(unittest.TestCase):
     def test_manage_script_exposes_scoped_commands(self):
         text = self.read_required("deploy/manage.sh")
 
-        for command in ("status", "logs", "restart", "update", "backup", "uninstall", "purge"):
+        for command in ("status", "logs", "restart", "update", "backup", "doctor", "uninstall", "purge"):
             self.assertIn(f"{command})", text)
         self.assertIn("slowlink_app", text)
         self.assertIn("slowlink_redis", text)

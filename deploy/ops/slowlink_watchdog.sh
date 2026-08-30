@@ -9,6 +9,7 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-5}"
 CPU_THRESHOLD="${CPU_THRESHOLD:-80}"
 HIGH_COUNT_LIMIT="${HIGH_COUNT_LIMIT:-6}"
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-600}"
+CLEANUP_INTERVAL="${CLEANUP_INTERVAL:-86400}"
 LOG_FILE="${LOG_FILE:-/opt/slowlink/watchdog.log}"
 STACK_DUMP_PATH="${STACK_DUMP_PATH:-/tmp/slowlink_python_stack.log}"
 STACK_SAMPLE_COUNT="${STACK_SAMPLE_COUNT:-3}"
@@ -20,6 +21,7 @@ last_cpu_usage=0
 last_cpu_time=0
 last_cpu_path=""
 last_caddy_attempt=0
+last_cleanup_ts=0
 cpu=""
 
 log() {
@@ -171,11 +173,20 @@ ensure_caddy() {
   fi
 }
 
+cleanup_docker() {
+  now="$(date +%s)"
+  [ $((now - last_cleanup_ts)) -lt "$CLEANUP_INTERVAL" ] && return 0
+  last_cleanup_ts="$now"
+  log "running daily docker cleanup"
+  docker builder prune -f --filter until=24h >> "$LOG_FILE" 2>&1 || true
+}
+
 log "watchdog started: container=$APP_CONTAINER threshold=${CPU_THRESHOLD}% count=$HIGH_COUNT_LIMIT interval=${CHECK_INTERVAL}s cooldown=${COOLDOWN_SECONDS}s"
 ensure_caddy
 
 while true; do
   ensure_caddy
+  cleanup_docker
   sample_container_cpu || true
   case "$cpu" in
     ''|*[!0-9]*)

@@ -48,6 +48,12 @@ class WatchdogTuningV13915Tests(unittest.TestCase):
         self.assertIn('docker compose --env-file "$INSTALL_DIR/.env"', script)
         self.assertIn("--profile https up -d --no-deps caddy", script)
 
+    def test_watchdog_prunes_docker_build_cache_daily(self):
+        script = read(OPS / "slowlink_watchdog.sh")
+
+        self.assertIn("cleanup_docker()", script)
+        self.assertIn("docker builder prune -f --filter until=24h", script)
+
 
 if __name__ == "__main__":
     unittest.main()
