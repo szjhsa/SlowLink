@@ -140,6 +140,7 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
         self.assertIn("current_caddy_domain", body)
         self.assertIn("保持现有 Caddy 容器", body)
         self.assertIn('compose --profile https up -d --no-deps "$CADDY_SERVICE"', body)
+        self.assertIn('docker rm -f "$CADDY_CONTAINER"', body)
         self.assertNotIn("docker compose down", body)
         self.assertNotIn("REDIS_CONTAINER", body)
         self.assertNotIn("assistant", body.lower())

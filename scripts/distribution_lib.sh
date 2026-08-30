@@ -482,6 +482,7 @@ ensure_web_proxy() {
     return 0
   fi
   log "启动 SlowLink HTTPS 代理：$web_domain_value"
+  docker rm -f "$CADDY_CONTAINER" >/dev/null 2>&1 || true
   compose --profile https up -d --no-deps "$CADDY_SERVICE" || return 1
 }
 

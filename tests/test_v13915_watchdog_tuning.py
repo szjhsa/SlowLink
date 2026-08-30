@@ -41,6 +41,13 @@ class WatchdogTuningV13915Tests(unittest.TestCase):
 
         self.assertLess(branch.index("snapshot"), branch.index("capture_python_state"))
 
+    def test_watchdog_recreates_broken_caddy_with_current_config(self):
+        script = read(OPS / "slowlink_watchdog.sh")
+
+        self.assertIn("ensure_caddy()", script)
+        self.assertIn('docker compose --env-file "$INSTALL_DIR/.env"', script)
+        self.assertIn("--profile https up -d --no-deps caddy", script)
+
 
 if __name__ == "__main__":
     unittest.main()

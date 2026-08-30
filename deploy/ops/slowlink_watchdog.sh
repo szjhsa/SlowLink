@@ -3,6 +3,8 @@ set -eu
 
 APP_CONTAINER="${APP_CONTAINER:-slowlink_app}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-slowlink_redis}"
+CADDY_CONTAINER="${CADDY_CONTAINER:-slowlink_caddy}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/slowlink}"
 CHECK_INTERVAL="${CHECK_INTERVAL:-5}"
 CPU_THRESHOLD="${CPU_THRESHOLD:-80}"
 HIGH_COUNT_LIMIT="${HIGH_COUNT_LIMIT:-6}"
@@ -17,6 +19,7 @@ last_restart=0
 last_cpu_usage=0
 last_cpu_time=0
 last_cpu_path=""
+last_caddy_attempt=0
 cpu=""
 
 log() {
@@ -148,9 +151,31 @@ snapshot() {
   ps -eo pid,tid,ppid,comm,%cpu,%mem,etime --sort=-%cpu | head -20 >> "$LOG_FILE" 2>/dev/null || true
 }
 
+ensure_caddy() {
+  [ -r "$INSTALL_DIR/.env" ] || return 0
+  web_mode="$(grep -E '^SLOWLINK_WEB_MODE=' "$INSTALL_DIR/.env" 2>/dev/null | tail -n 1 | cut -d= -f2 || true)"
+  domain="$(grep -E '^SLOWLINK_DOMAIN=' "$INSTALL_DIR/.env" 2>/dev/null | tail -n 1 | cut -d= -f2 || true)"
+  [ "$web_mode" = "http" ] && return 0
+  [ -n "$domain" ] || return 0
+  now="$(date +%s)"
+  [ $((now - last_caddy_attempt)) -lt 60 ] && return 0
+  last_caddy_attempt="$now"
+  running="$(docker inspect "$CADDY_CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)"
+  [ "$running" = "true" ] && return 0
+  log "caddy not running, recreating with current config"
+  docker rm -f "$CADDY_CONTAINER" >/dev/null 2>&1 || true
+  if (cd "$INSTALL_DIR" && docker compose --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/deploy/docker-compose.yml" --profile https up -d --no-deps caddy) >> "$LOG_FILE" 2>&1; then
+    log "caddy recreated"
+  else
+    log "caddy recreate failed"
+  fi
+}
+
 log "watchdog started: container=$APP_CONTAINER threshold=${CPU_THRESHOLD}% count=$HIGH_COUNT_LIMIT interval=${CHECK_INTERVAL}s cooldown=${COOLDOWN_SECONDS}s"
+ensure_caddy
 
 while true; do
+  ensure_caddy
   sample_container_cpu || true
   case "$cpu" in
     ''|*[!0-9]*)
