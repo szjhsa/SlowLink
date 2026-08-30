@@ -42,7 +42,7 @@ class HttpsDistributionV1392Tests(unittest.TestCase):
         self.assertIn("caddy_config:/config", compose)
         self.assertIn("--maxmemory 256mb", compose)
         self.assertIn("--maxmemory-policy volatile-lru", compose)
-        self.assertIn("https://localhost/health", compose)
+        self.assertIn("http://127.0.0.1:2019/config/", compose)
 
     def test_caddy_only_proxies_the_internal_app_service(self):
         caddyfile = read("ops/Caddyfile")
