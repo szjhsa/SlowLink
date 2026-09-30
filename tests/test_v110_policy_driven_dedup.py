@@ -41,6 +41,25 @@ class PolicyDrivenDedupV110Tests(unittest.TestCase):
         self.assertTrue(second)
         self.assertEqual(first_profile["dedup_id"], second_profile["dedup_id"])
         self.assertTrue(second_profile["dedup_id"].startswith("code:"))
+        self.assertIn("完整码", reason)
+
+    def test_lottery_policy_dedups_same_id_across_different_text(self):
+        dedup, _client = load_dedup()
+        policy = rule_policy.default_policy("lottery")
+        first_text = "新的抽奖已经创建\n抽奖 ID：1ea59728-11f6-4748-9a32-b341129f2f3d\n奖品：A"
+        second_text = "新的抽奖已经创建\n抽奖 ID：1ea59728-11f6-4748-9a32-b341129f2f3d\n奖品：B"
+
+        first, _, first_profile = dedup.check_and_mark(
+            first_text, "", None, "strict", "来源A", policy=policy
+        )
+        second, reason, second_profile = dedup.check_and_mark(
+            second_text, "", None, "strict", "来源B", policy=policy
+        )
+
+        self.assertFalse(first)
+        self.assertTrue(second)
+        self.assertEqual(first_profile["dedup_id"], second_profile["dedup_id"])
+        self.assertIn("抽奖 ID", reason)
 
     def test_lottery_policy_ignores_unrelated_code_identity(self):
         policy = rule_policy.default_policy("lottery")

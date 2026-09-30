@@ -838,7 +838,9 @@ def check_and_mark(
 
     if not content_is_new:
         _release_new_keys(new_keys)
-        if profile.get("lottery_identity"):
+        if profile.get("dedup_strategy") == "code_identity":
+            reason = f"相同完整码重复（{real_ttl_minutes}分钟内）"
+        elif profile.get("lottery_identity"):
             reason = f"相同抽奖 ID 重复（{real_ttl_minutes}分钟内）"
         else:
             reason = f"相同文本内容重复（{real_ttl_minutes}分钟内）"
