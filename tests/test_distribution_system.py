@@ -234,6 +234,26 @@ class DistributionSystemTests(unittest.TestCase):
                 payload = (output_dir / name).read_bytes()
                 self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
 
+    def test_release_builder_refuses_to_delete_non_dist_repo_directory(self):
+        builder_path = ROOT / "scripts" / "build_release.py"
+        spec = importlib.util.spec_from_file_location("slowlink_build_release_guard", builder_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix="release-guard-") as temp_dir:
+            output_dir = Path(temp_dir)
+            marker = output_dir / "DO_NOT_DELETE.txt"
+            marker.write_text("keep", encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                module.build(version, output_dir)
+
+            self.assertTrue(marker.is_file())
+            self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
+
     def test_repository_root_ignores_runtime_data_without_requiring_local_deletion(self):
         version_dirs = [path.name for path in ROOT.iterdir() if path.is_dir() and path.name.startswith("V1.")]
         deploy_archives = [path.name for path in ROOT.iterdir() if path.is_file() and path.suffix.lower() == ".zip"]

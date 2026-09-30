@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>慢链 SlowLink{% if app_version %} {{ app_version }}{% endif %}</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ app_version|default('dev') }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ app_version|default('dev') }}-simple6">
 </head>
-<body>
+<body class="simple-console" data-main-page="run" data-system-view="account">
 <header class="header">
   <div>
     <div class="brand">慢链 SlowLink{% if app_version %} <span class="version">{{ app_version }}</span>{% endif %}</div>

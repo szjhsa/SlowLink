@@ -120,19 +120,43 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _prepare_output_dir(output_dir: Path) -> Path:
+    raw_output = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
+    raw_output = raw_output.absolute()
+    resolved = raw_output.resolve()
+    repo_dist = ROOT / "dist"
+
+    if resolved == ROOT:
+        raise ValueError("输出目录不能是仓库根目录")
+    if ROOT in resolved.parents:
+        if raw_output != repo_dist or repo_dist.is_symlink():
+            raise ValueError("仓库内输出目录只能是非符号链接的 dist")
+
+    if resolved.exists():
+        if not resolved.is_dir():
+            raise ValueError(f"输出路径不是目录：{resolved}")
+        is_repo_dist = raw_output == repo_dist and not repo_dist.is_symlink()
+        if not is_repo_dist and any(resolved.iterdir()):
+            raise ValueError(f"输出目录已存在且非空，拒绝删除：{resolved}")
+
+    if resolved.exists():
+        for child in resolved.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+    else:
+        resolved.mkdir(parents=True)
+    return resolved
+
+
 def build(version: str, output_dir: Path) -> list[Path]:
     normalized = validate_version(version)
     repository_version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     if repository_version != normalized:
         raise ValueError(f"VERSION is {repository_version}, requested {normalized}")
 
-    output_dir = output_dir.resolve()
-    if output_dir == ROOT or ROOT in output_dir.parents:
-        if output_dir == ROOT:
-            raise ValueError("output directory cannot be repository root")
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True)
+    output_dir = _prepare_output_dir(output_dir)
 
     app_name, full_name, log_name, checksum_name = expected_asset_names(normalized)
     app_path = output_dir / app_name

@@ -3,18 +3,23 @@
 <div id="toast" class="toast {% if msg %}show {{ msg_kind }}{% endif %}">{% if msg %}{{ msg }}{% endif %}</div>
 
 <nav class="slowlink-main-nav" aria-label="页面导航">
-  <a href="#runBoard">概览</a>
-  <a href="#accountBoard">账号</a>
-  <a href="#rulesBoard">规则</a>
-  <a href="#recordsBoard">记录</a>
-  <a href="#toolsBoard">维护</a>
+  <a href="#runBoard" data-page="run" class="active">运行</a>
+  <a href="#rulesBoard" data-page="rules">规则</a>
+  <a href="#accountBoard" data-page="system">系统</a>
+  <a href="#recordsBoard" data-page="system" data-system-target="records" hidden>记录</a>
 </nav>
 
-<section class="ui-board run-monitor-board unified-run-board" id="runBoard">
+<nav class="simple-subnav" id="systemSubnav" aria-label="系统子页面">
+  <button type="button" data-system-view="account" class="active">账号与转发</button>
+  <button type="button" data-system-view="tools">工具与插件</button>
+  <button type="button" data-system-view="records">记录与缓存</button>
+</nav>
+
+<section class="ui-board run-monitor-board unified-run-board" id="runBoard" data-page-panel="run">
   <div class="board-head unified-head">
     <div>
-      <h2>运行与监控</h2>
-        <p class="hint no-margin">控制监听开关与状态。</p>
+      <h2>运行</h2>
+      <p class="hint no-margin">监听状态与群列表。</p>
     </div>
   </div>
 
@@ -22,17 +27,17 @@
     <div class="mini-card"><div class="mini-label">Telegram</div><div class="mini-value" id="tgStatus">{{ '已登录' if tg_logged_in else '未登录' }}</div><div class="mini-sub" id="tgUser">{{ tg_current_user }}</div></div>
     <div class="mini-card"><div class="mini-label">监听状态</div><div class="mini-value"><span class="pill {{ bot_status }}" id="botStatus">{{ bot_status }}</span></div><div class="mini-sub">当前监听状态</div></div>
     <div class="mini-card heartbeat-card"><div class="mini-label">监听心跳</div><div class="mini-value heartbeat-value"><span id="heartbeatHealth" class="health {{ heartbeat.health_level if heartbeat else 'idle' }}">{{ heartbeat.health if heartbeat else '未运行' }}</span></div><div class="mini-sub"><span id="heartbeatTime">{{ heartbeat.time if heartbeat else '-' }}</span> · <span id="heartbeatAge">{{ heartbeat.age_text if heartbeat else '-' }}</span></div></div>
-    <div class="mini-card"><div class="mini-label">全部群/频道</div><div class="mini-value" id="statTotal">{{ dialog_stats.total }}</div><div class="mini-sub">刷新后更新</div></div>
     <div class="mini-card"><div class="mini-label">正在监听</div><div class="mini-value ok" id="statListening">{{ dialog_stats.listening }}</div><div class="mini-sub">已启用监听</div></div>
     <div class="mini-card"><div class="mini-label">未监听 / 排除</div><div class="mini-value"><span id="statUnlistened">{{ dialog_stats.unlistened }}</span> / <span id="statExcluded">{{ dialog_stats.excluded }}</span></div><div class="mini-sub">未监听的群会保留</div></div>
-    <div class="mini-card"><div class="mini-label">版本</div><div class="mini-value" id="appVersion">{{ app_version }}</div><div class="mini-sub">当前版本</div></div>
+    <span hidden id="statTotal">{{ dialog_stats.total }}</span>
+    <span hidden id="appVersion">{{ app_version }}</span>
   </section>
 
   <section class="run-monitor-card main-block unified-control-monitor">
     <div class="control-strip">
       <div>
-        <h2>运行控制</h2>
-        <p class="hint no-margin">启动或停止监听。</p>
+        <h2>监听开关</h2>
+        <p class="hint no-margin">一键启动或停止。</p>
       </div>
       <div class="button-row control-actions">
         <form action="/start_bot" method="post" data-ajax="1"><button>启动监听</button></form>
@@ -43,8 +48,8 @@
     <div class="monitor-inline-block">
       <div class="title-row compact-title monitor-head">
         <div>
-          <h2>监听面板</h2>
-          <p class="hint no-margin">取消监听的群会显示为未监听。</p>
+          <h2>监听列表</h2>
+          <p class="hint no-margin">默认收起，按需展开。</p>
         </div>
         <div class="button-row monitor-head-actions">
           <button type="button" class="secondary" id="monitorFoldBtn">展开监听列表</button>
@@ -102,16 +107,34 @@
         </form>
       </div>
     </div>
+
+    <details class="simple-advanced run-source-tools">
+      <summary>高级：手动监听与排除</summary>
+      <div class="simple-advanced-body">
+        <div class="two-col">
+          <div>
+            <h4>手动监听</h4>
+            <form action="/add_monitor" method="post" class="row" data-ajax="1"><input name="value" placeholder="@username 或 -100ID"><button>添加</button></form>
+            <form action="/test_source" method="post" class="row" data-ajax="1"><input name="value" placeholder="输入要测试的监听源"><button>测试</button></form>
+            <div class="collapse-box open-lite"><div class="summary-lite">当前监听列表：<span id="monitorCount">{{ monitor_chats|length }}</span> 个</div><div class="compact-list" id="monitorList"></div></div>
+          </div>
+          <div>
+            <h4>排除群 / 频道</h4>
+            <form action="/add_exclude" method="post" class="row" data-ajax="1"><input name="value" placeholder="@username 或 -100ID"><button>添加</button></form>
+            <div class="collapse-box open-lite"><div class="summary-lite">当前排除列表：<span id="excludeCount">{{ exclude_chats|length }}</span> 个</div><div class="compact-list" id="excludeList"></div></div>
+          </div>
+        </div>
+      </div>
+    </details>
   </section>
 </section>
 
-<section class="ui-board grouped-board account-board" data-active="account" id="accountBoard">
-  <div class="board-head"><div><h2>账号与转发</h2><p class="hint no-margin">管理账号、转发目标与监听范围。</p></div></div>
+<section class="ui-board grouped-board account-board" data-active="account" id="accountBoard" data-page-panel="system" data-system-panel="account">
+  <div class="board-head"><div><h2>账号与转发</h2></div></div>
   <div class="tab-shell grouped-tabs" data-tabs="accounting">
     <div class="tab-nav">
       <button type="button" class="tab-btn active" data-tab="account">Telegram 账号</button>
       <button type="button" class="tab-btn" data-tab="target">转发目标</button>
-      <button type="button" class="tab-btn" data-tab="listen">监听 / 排除</button>
     </div>
     <div class="tab-content">
       <div class="tab-panel active" data-panel="account">
@@ -151,54 +174,42 @@
         <form action="/test_send" method="post" data-ajax="1"><button>测试发送到目标</button></form>
         <p class="hint">支持 @username、username、-100ID。</p>
       </div>
-      <div class="tab-panel" data-panel="listen">
-        <h3>监听 / 排除</h3>
-        <div class="two-col">
-          <div>
-            <h4>手动监听</h4>
-            <form action="/add_monitor" method="post" class="row" data-ajax="1"><input name="value" placeholder="@username 或 -100ID"><button>添加</button></form>
-            <form action="/test_source" method="post" class="row" data-ajax="1"><input name="value" placeholder="输入要测试的监听源"><button>测试</button></form>
-            <div class="collapse-box open-lite"><div class="summary-lite">当前监听列表：<span id="monitorCount">{{ monitor_chats|length }}</span> 个</div><div class="compact-list" id="monitorList"></div></div>
-          </div>
-          <div>
-            <h4>排除群/频道</h4>
-            <form action="/add_exclude" method="post" class="row" data-ajax="1"><input name="value" placeholder="@username 或 -100ID"><button>添加</button></form>
-            <div class="collapse-box open-lite"><div class="summary-lite">当前排除列表：<span id="excludeCount">{{ exclude_chats|length }}</span> 个</div><div class="compact-list" id="excludeList"></div></div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
 
-<section class="ui-board grouped-board rules-board" data-active="rules" id="rulesBoard">
-  <div class="board-head"><div><h2>规则与去重</h2><p class="hint no-margin">管理转发规则与去重策略。</p></div></div>
+<section class="ui-board grouped-board rules-board" data-active="rules" id="rulesBoard" data-page-panel="rules">
+  <div class="board-head"><div><h2>规则</h2></div></div>
   <div class="tab-shell grouped-tabs" data-tabs="ruleset">
     <div class="tab-nav">
       <button type="button" class="tab-btn active" data-tab="rules">正则规则</button>
       <button type="button" class="tab-btn" data-tab="exclude-texts">排除文本</button>
       <button type="button" class="tab-btn" data-tab="codes">码识别</button>
-      <button type="button" class="tab-btn" data-tab="dedup">去重设置</button>
+      <button type="button" class="tab-btn" data-tab="dedup">去重默认</button>
     </div>
     <div class="tab-content">
       <div class="tab-panel active" data-panel="rules">
         <h3>正则规则</h3>
-        <div class="generated-rule-box">
-          <h4>按原消息生成规则</h4>
-          <p class="hint">先选择规则类型，再粘贴原消息；生成后确认添加。</p>
-          <form action="/rule_generate" method="post" class="stack" data-ajax="1" data-result="rule_generate">
-            <label>规则类型
-              <select name="rule_type">
-                {% for t in rule_generator_types %}
-                <option value="{{ t.id }}">{{ t.label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <textarea name="sample" rows="5" placeholder="把原消息粘贴到这里"></textarea>
-            <button>生成规则</button>
-          </form>
-          <div id="ruleGenerateResult"></div>
-        </div>
+        <details class="simple-advanced generated-rule-details">
+          <summary>按原消息生成规则</summary>
+          <div class="simple-advanced-body">
+            <div class="generated-rule-box">
+              <p class="hint">先选择规则类型，再粘贴原消息；生成后确认添加。</p>
+              <form action="/rule_generate" method="post" class="stack" data-ajax="1" data-result="rule_generate">
+                <label>规则类型
+                  <select name="rule_type">
+                    {% for t in rule_generator_types %}
+                    <option value="{{ t.id }}">{{ t.label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <textarea name="sample" rows="5" placeholder="把原消息粘贴到这里"></textarea>
+                <button>生成规则</button>
+              </form>
+              <div id="ruleGenerateResult"></div>
+            </div>
+          </div>
+        </details>
         <form action="/add_regex" method="post" class="row" data-ajax="1"><input name="value" placeholder="可以粘贴单条规则，也可以用 ;; 批量分隔"><button>添加</button></form>
         <p class="hint">添加命中后转发的正则规则。</p>
         <div class="collapse-box open-lite"><div class="summary-lite">当前正则规则：<span id="regexCount">{{ regex_rules|length }}</span> 条</div><div class="compact-list rule-list" id="regexList"></div></div>
@@ -211,66 +222,77 @@
       </div>
       <div class="tab-panel" data-panel="codes">
         <h3>码识别</h3>
-        {% if active_plugin %}
-        <div class="code-safe-hero">
+        <div class="code-summary-row">
           <div>
-            <b>强格式保护已开启</b>
-            <p>完整 Register / Renew 强格式码可直接触发；Whitelist 十位完整码需先命中正则，再用于准确去重。</p>
+            <span>识别模式</span>
+            <b>{% if active_plugin %}插件自动识别{% else %}纯净自定义{% endif %}</b>
           </div>
-          <div class="safe-pill">强码可触发</div>
+          <div>
+            <span>已加载规则</span>
+            <b><span id="codeRuleCount">{{ code_rules|length }}</span> 条</b>
+          </div>
         </div>
-        <div class="code-safe-grid">
-          <div>✓ Register / Renew 完整码</div>
-          <div>✓ Whitelist 十位完整码需先命中正则</div>
-          <div>✓ 邀请码 / 注册码字段</div>
-          <div>✓ 注册链接 code 参数</div>
-          <div>✓ 同一个完整码跨群只发一次</div>
-        </div>
+        {% if active_plugin %}
+        <p class="hint">完整 Register / Renew 强格式可直接触发；Whitelist 十位完整码需先命中正则，再用于准确去重。</p>
         {% else %}
         <p class="hint">纯净模式只使用你添加的码规则。</p>
         {% endif %}
-        <details class="advanced-box code-advanced">
-          <summary>高级码规则设置</summary>
-          <p class="hint">{% if active_plugin %}用于添加特殊码格式。{% else %}添加你的码识别格式；勾选“允许单独触发”后可直接转发。{% endif %}</p>
-          <form action="/add_code_rule" method="post" class="code-rule-form" data-ajax="1">
-            <input name="name" placeholder="规则名称，例如 VIP 邀请码">
-            <input name="pattern" placeholder="识别正则，例如 VIP-[A-Za-z0-9-]+">
-            <input name="group" value="0" placeholder="提取组，默认 0">
-            <label class="inline-check"><input type="checkbox" name="fast" value="1" checked> 极速通道</label>
-            <label class="inline-check"><input type="checkbox" name="strict_context" value="1" checked> 检查注册/邀请上下文</label>
-            <label class="inline-check danger-inline"><input type="checkbox" name="trigger" value="1"> 允许这条码规则单独触发转发</label>
-            <button>添加码规则</button>
-          </form>
-          <div class="button-row compact-actions"><form action="/reset_code_rules" method="post" data-ajax="1"><button class="secondary small">{% if active_plugin %}恢复默认码规则{% else %}清空码识别规则{% endif %}</button></form></div>
-          <div class="collapse-box open-lite"><div class="summary-lite">当前码识别规则：<span id="codeRuleCount">{{ code_rules|length }}</span> 条</div><div class="compact-list code-rule-list" id="codeRuleList"></div></div>
+        <details class="simple-advanced code-advanced">
+          <summary>高级：自定义码规则</summary>
+          <div class="simple-advanced-body">
+            <p class="hint">{% if active_plugin %}用于添加特殊码格式。{% else %}添加你的码识别格式；勾选“允许单独触发”后可直接转发。{% endif %}</p>
+            <form action="/add_code_rule" method="post" class="code-rule-form" data-ajax="1">
+              <div class="code-rule-input-grid">
+                <input name="name" placeholder="规则名称，例如 VIP 邀请码">
+                <input name="pattern" placeholder="识别正则，例如 VIP-[A-Za-z0-9-]+">
+                <input name="group" value="0" placeholder="提取组，默认 0">
+              </div>
+              <div class="code-rule-option-grid">
+                <label class="inline-check"><input type="checkbox" name="fast" value="1" checked> 极速通道</label>
+                <label class="inline-check"><input type="checkbox" name="strict_context" value="1" checked> 检查注册/邀请上下文</label>
+                <label class="inline-check danger-inline"><input type="checkbox" name="trigger" value="1"> 允许这条码规则单独触发转发</label>
+              </div>
+              <button>添加码规则</button>
+            </form>
+            <div class="button-row compact-actions"><form action="/reset_code_rules" method="post" data-ajax="1"><button class="secondary small">{% if active_plugin %}恢复默认码规则{% else %}清空码识别规则{% endif %}</button></form></div>
+            <div class="collapse-box open-lite"><div class="summary-lite">自定义规则列表</div><div class="compact-list code-rule-list" id="codeRuleList"></div></div>
+          </div>
         </details>
       </div>
       <div class="tab-panel" data-panel="dedup">
-        <h3>去重设置</h3>
+        <h3>去重默认值</h3>
         <form action="/save_dedup" method="post" class="stack dedup-form" data-ajax="1">
-          <label><input type="checkbox" name="enabled" value="1" {% if dedup_enabled %}checked{% endif %}> 启用去重</label>
           {% set opts = [('0','不去重'),('5','5分钟'),('10','10分钟'),('15','15分钟'),('20','20分钟'),('30','30分钟'),('60','1小时'),('180','3小时'),('360','6小时'),('720','12小时'),('1440','1天'),('4320','3天'),('10080','7天'),('20160','14天')] %}
-          {% if active_plugin %}
-          <div class="dedup-grid">
-            <label>注册 / 开注<select name="dedup_register_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_register_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>邀请码 / 注册码<select name="dedup_invite_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_invite_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>完整码重复<select name="dedup_code_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_code_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>普通抽奖<select name="dedup_lottery_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_lottery_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>联合抽奖<select name="dedup_joint_lottery_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_joint_lottery_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>抽奖跨模板去重
-              <select name="dedup_lottery_template_mode">
-                <option value="global" {% if dedup_lottery_template_mode=='global' %}selected{% endif %}>全局：所有抽奖模板统一去重（默认）</option>
-                <option value="id" {% if dedup_lottery_template_mode=='id' %}selected{% endif %}>仅 ID / 种子：只有明确抽奖标识才去重</option>
-                <option value="off" {% if dedup_lottery_template_mode=='off' %}selected{% endif %}>关闭跨模板：只按原文本去重</option>
-              </select>
-            </label>
-            <label>长期活动<select name="dedup_long_term_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_long_term_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>其它类型<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+          <div class="dedup-master-row">
+            <label class="dedup-enabled"><input type="checkbox" name="enabled" value="1" {% if dedup_enabled %}checked{% endif %}> 启用去重</label>
+            <span class="dedup-priority-note">每条规则自己的时间优先</span>
           </div>
-          <p class="hint">按活动类型设置去重时间。</p>
+          {% if active_plugin %}
+          <p class="hint">这里只影响新规则和没有单独设置时间的旧规则。</p>
+          <div class="dedup-simple-grid">
+            <label>完整码<select name="dedup_code_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_code_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+            <label>抽奖<select name="dedup_lottery_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_lottery_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+            <label>普通文本<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+          </div>
+          <details class="simple-advanced">
+            <summary>高级默认值</summary>
+            <div class="dedup-grid dedup-advanced-grid">
+              <label>注册 / 开注<select name="dedup_register_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_register_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+              <label>邀请码 / 注册码<select name="dedup_invite_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_invite_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+              <label>联合抽奖<select name="dedup_joint_lottery_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_joint_lottery_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+              <label>长期活动<select name="dedup_long_term_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_long_term_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+              <label>抽奖跨模板去重
+                <select name="dedup_lottery_template_mode">
+                  <option value="global" {% if dedup_lottery_template_mode=='global' %}selected{% endif %}>全局：所有抽奖模板统一去重（默认）</option>
+                  <option value="id" {% if dedup_lottery_template_mode=='id' %}selected{% endif %}>仅 ID / 种子：只有明确抽奖标识才去重</option>
+                  <option value="off" {% if dedup_lottery_template_mode=='off' %}selected{% endif %}>关闭跨模板：只按原文本去重</option>
+                </select>
+              </label>
+            </div>
+          </details>
           {% else %}
           <label>普通文本去重<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-          <p class="hint">按文本内容设置去重时间。</p>
+          <p class="hint">这里只影响新规则和没有单独设置时间的旧规则。</p>
           {% endif %}
           <button>保存去重策略</button>
         </form>
@@ -279,24 +301,22 @@
   </div>
 </section>
 
-<section class="ui-board grouped-board tools-board low-frequency-board" data-active="debug" id="toolsBoard">
-  <div class="board-head"><div><h2>工具与备份</h2><p class="hint no-margin">测试、备份与插件管理。</p></div></div>
-  <div class="tab-shell grouped-tabs" data-tabs="tools">
-    <div class="tab-nav">
-      <button type="button" class="tab-btn active" data-tab="debug">调试工具</button>
-      <button type="button" class="tab-btn" data-tab="backup">备份恢复</button>
-    </div>
-    <div class="tab-content">
-      <div class="tab-panel active" data-panel="debug">
-        <h3>调试工具</h3>
+<section class="ui-board grouped-board tools-board low-frequency-board" data-active="debug" id="toolsBoard" data-page-panel="system" data-system-panel="tools">
+  <div class="board-head"><div><h2>工具与插件</h2></div></div>
+  <div class="tools-unified">
+    <details class="simple-advanced" open>
+      <summary>测试与自检</summary>
+      <div class="simple-advanced-body">
         <div class="two-col">
           <div><h4>正则测试器</h4><form action="/regex_test" method="post" class="stack" data-ajax="1" data-result="regex"><textarea name="text" rows="5" placeholder="把要测试的消息粘贴到这里"></textarea><button>测试正则 / 分类 / 去重指纹</button></form></div>
           <div><h4>启动自检</h4><form action="/precheck" method="post" data-ajax="1" data-result="precheck"><button>执行启动自检</button></form><p class="hint">检查系统运行状态。</p></div>
         </div>
         <div id="debugResult"></div>
       </div>
-      <div class="tab-panel" data-panel="backup">
-        <h3>备份恢复</h3>
+    </details>
+    <details class="simple-advanced">
+      <summary>备份、导入与插件</summary>
+      <div class="simple-advanced-body">
         <div class="two-col">
           <div class="backup-box"><h4>导出</h4><p class="hint">下载配置备份文件。</p><a class="button-link" href="/export_config">下载配置备份</a></div>
           <div class="backup-box"><h4>导入</h4><form action="/import_config" method="post" enctype="multipart/form-data" class="stack" data-ajax="1"><input type="file" name="backup_file" accept="application/json,.json"><label>导入方式<select name="mode"><option value="overwrite">覆盖当前配置</option><option value="merge">合并到当前配置</option><option value="rules_only">只导入正则规则</option></select></label><button class="warning">导入备份文件</button></form></div>
@@ -326,14 +346,15 @@
         </div>
         <p class="hint">备份主要配置，不含密码、Session 和缓存。</p>
       </div>
-    </div>
+    </details>
   </div>
 </section>
 
-<section class="ui-board grouped-board records-cache-board" id="recordsBoard">
-  <div class="board-head"><div><h2>记录与缓存</h2><p class="hint no-margin">清理记录与缓存。</p></div></div>
+<section class="ui-board grouped-board records-cache-board" id="recordsBoard" data-page-panel="system" data-system-panel="records">
+  <div class="board-head"><div><h2>记录与缓存</h2></div></div>
   <div class="section-stack">
-    <div class="sub-panel cache-subpanel">
+    <details class="sub-panel cache-subpanel simple-advanced">
+      <summary>缓存与清理</summary>
       <div class="tab-panel active" data-panel="cache">
         <h3>缓存管理</h3>
         <p class="hint">仅清理记录和缓存，不影响登录与配置。</p>
@@ -346,36 +367,41 @@
         </div>
         <div class="cache-actions safe-cache-actions">
           <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="records"><button class="secondary">清空页面记录</button></form>
-          <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="dedup_records"><button class="secondary">清空去重显示记录</button></form>
-          <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="dialogs"><button class="secondary">清空会话缓存</button></form>
-          <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="runtime"><button class="secondary">清空临时缓存</button></form>
         </div>
-        <div class="notice-box">
-          <b>说明：</b>“系统数据条目”是 Redis 中的配置与记录总数；防重复缓存用于阻止重复消息，会自动过期。
-          “防重复缓存”是正在生效的防重复 TTL key，用来挡同码、同抽奖、同注册链接等重复转发，会自动过期。
-        </div>
-        <details class="danger-zone">
-          <summary>高级操作：清空防重复缓存</summary>
-          <p class="hint">清空后，已去重的内容可能再次转发。</p>
-          <form action="/clear_cache" method="post" data-ajax="1" class="inline-form">
-            <input type="hidden" name="kind" value="dedup_cache">
-            <input name="confirm_code" placeholder="输入 CLEAR 确认" autocomplete="off">
-            <button class="warning">清空防重复缓存</button>
-          </form>
+        <details class="simple-advanced cache-advanced">
+          <summary>高级清理</summary>
+          <div class="simple-advanced-body">
+            <div class="cache-actions">
+              <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="dedup_records"><button class="secondary">清空去重显示记录</button></form>
+              <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="dialogs"><button class="secondary">清空会话缓存</button></form>
+              <form action="/clear_cache" method="post" data-ajax="1"><input type="hidden" name="kind" value="runtime"><button class="secondary">清空临时缓存</button></form>
+            </div>
+            <p class="hint">防重复缓存会自动过期；清空后，已去重的内容可能再次转发。</p>
+            <form action="/clear_cache" method="post" data-ajax="1" class="inline-form">
+              <input type="hidden" name="kind" value="dedup_cache">
+              <input name="confirm_code" placeholder="输入 CLEAR 确认" autocomplete="off">
+              <button class="warning">清空防重复缓存</button>
+            </form>
+          </div>
         </details>
       </div>
-    </div>
+    </details>
     <div class="sub-panel records-subpanel">
       <h3>记录中心</h3>
       <p class="hint">自动刷新，可单独清理记录。</p>
       <div class="tab-shell records-tab-shell inner-record-tabs" data-tabs="records">
+  <div class="record-group-nav">
+    <button type="button" class="active" data-record-group="forward">转发</button>
+    <button type="button" data-record-group="dedup">去重</button>
+    <button type="button" data-record-group="system">系统</button>
+  </div>
   <div class="tab-nav compact-tabs">
-    <button type="button" class="tab-btn active" data-tab="hits">命中记录</button>
-    <button type="button" class="tab-btn" data-tab="dedups">去重记录</button>
-    <button type="button" class="tab-btn" data-tab="stats">去重统计</button>
-    <button type="button" class="tab-btn" data-tab="fails">失败记录</button>
-    <button type="button" class="tab-btn" data-tab="perf">性能诊断</button>
-    <button type="button" class="tab-btn" data-tab="events">系统事件</button>
+    <button type="button" class="tab-btn active" data-tab="hits" data-record-group-item="forward">命中</button>
+    <button type="button" class="tab-btn" data-tab="fails" data-record-group-item="forward">失败 / 慢转发</button>
+    <button type="button" class="tab-btn" data-tab="perf" data-record-group-item="forward">性能</button>
+    <button type="button" class="tab-btn" data-tab="dedups" data-record-group-item="dedup">去重记录</button>
+    <button type="button" class="tab-btn" data-tab="stats" data-record-group-item="dedup">统计 / 碰撞</button>
+    <button type="button" class="tab-btn" data-tab="events" data-record-group-item="system">系统事件</button>
   </div>
   <div class="tab-content">
     <div class="tab-panel active" data-panel="hits"><div class="panel-headline"><b>命中记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="hits"><button class="small secondary">清空命中记录</button></form></div><div class="logbox big-logbox" id="hitsBox"></div></div>
@@ -402,6 +428,66 @@ let stateRequestSeq = 0;
 const POLL_INTERVAL_MS = 5000;
 const CSRF_TOKEN = "{{ csrf_token() }}";
 const RULE_TYPE_OPTIONS = {{ rule_generator_types|tojson }};
+
+function applySystemView(view){
+  const allowed = ['account', 'tools', 'records'];
+  const next = allowed.includes(view) ? view : 'account';
+  document.body.dataset.systemView = next;
+  document.querySelectorAll('#systemSubnav [data-system-view]').forEach(button => {
+    button.classList.toggle('active', button.dataset.systemView === next);
+  });
+}
+
+function pageFromHash(){
+  const hash = String(location.hash || '').replace(/^#/, '');
+  if(hash === 'rulesBoard') return 'rules';
+  if(hash === 'accountBoard' || hash === 'toolsBoard' || hash === 'recordsBoard') return 'system';
+  return 'run';
+}
+
+function systemViewFromHash(){
+  const hash = String(location.hash || '').replace(/^#/, '');
+  if(hash === 'toolsBoard') return 'tools';
+  if(hash === 'recordsBoard') return 'records';
+  return 'account';
+}
+
+function applyMainPage(page, scrollToTop=true){
+  const allowed = ['run', 'rules', 'system'];
+  const next = allowed.includes(page) ? page : 'run';
+  document.body.dataset.mainPage = next;
+  document.querySelectorAll('.slowlink-main-nav [data-page]').forEach(link => {
+    link.classList.toggle('active', link.dataset.page === next && !link.classList.contains('sr-only'));
+  });
+  if(next === 'system'){
+    applySystemView(document.body.dataset.systemView || 'account');
+  }
+  if(scrollToTop){
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+}
+
+document.querySelectorAll('.slowlink-main-nav [data-page]').forEach(link => {
+  link.addEventListener('click', event => {
+    event.preventDefault();
+    if(link.getAttribute('href')){
+      history.replaceState(null, '', link.getAttribute('href'));
+    }
+    applyMainPage(link.dataset.page || 'run');
+    if(link.dataset.systemTarget){
+      applySystemView(link.dataset.systemTarget);
+    }
+  });
+});
+
+document.querySelectorAll('#systemSubnav [data-system-view]').forEach(button => {
+  button.addEventListener('click', () => {
+    const view = button.dataset.systemView || 'account';
+    const hash = view === 'tools' ? '#toolsBoard' : (view === 'records' ? '#recordsBoard' : '#accountBoard');
+    history.replaceState(null, '', hash);
+    applySystemView(view);
+  });
+});
 
 function isPageHidden(){
   return document.hidden || document.visibilityState === 'hidden';
@@ -616,15 +702,18 @@ function renderRegexList(items, disabled, policies){
   const off = new Set(disabled || []);
   const policyMap = policies || {};
   const ttlOptions = [['0','不去重'],['5','5分钟'],['10','10分钟'],['15','15分钟'],['20','20分钟'],['30','30分钟'],['60','1小时'],['180','3小时'],['360','6小时'],['720','12小时'],['1440','1天'],['4320','3天'],['10080','7天'],['20160','14天']];
-  const typeOptions = RULE_TYPE_OPTIONS.map(item => [item.id, item.label]);
+  const typeOptions = RULE_TYPE_OPTIONS.map(item => ({
+    value: String(item.id ?? ''),
+    label: String(item.label ?? '')
+  }));
   box.innerHTML = items.map(item => {
     const policy = policyMap[item];
     const currentType = policy ? String(policy.rule_type || '') : '';
     const currentTtl = String(policy ? (policy.ttl_minutes ?? 20) : 20);
     const badge = policy ? `<span class="rule-policy-badge">${esc(policy.label || policy.rule_type || '已绑定')} · ${esc(policy.ttl_minutes ?? 0)} 分钟</span> ` : '<span class="rule-policy-badge legacy">兼容模式</span> ';
-    const currentTypeKnown = typeOptions.some(([value]) => value === currentType);
+    const currentTypeKnown = typeOptions.some(option => option.value === currentType);
     const unavailableType = currentType && !currentTypeKnown ? `<option value="${esc(currentType)}" selected disabled>${esc(currentType)}（当前插件未提供）</option>` : '';
-    const typeSelect = unavailableType + (!currentType ? '<option value="" selected disabled>请选择类型</option>' : '') + typeOptions.map(([value,label]) => `<option value="${value}" ${currentType===value?'selected':''}>${label}</option>`).join('');
+    const typeSelect = unavailableType + (!currentType ? '<option value="" selected disabled>请选择类型</option>' : '') + typeOptions.map(option => `<option value="${esc(option.value)}" ${currentType===option.value?'selected':''}>${esc(option.label)}</option>`).join('');
     const ttlSelect = ttlOptions.map(([value,label]) => `<option value="${value}" ${currentTtl===value?'selected':''}>${label}</option>`).join('');
     return `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${badge}${esc(item)}</span><div class="regex-actions"><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div><details class="rule-policy-editor"><summary>修改策略</summary><form action="/update_rule_policy" method="post" data-ajax="1" class="rule-policy-form"><input type="hidden" name="rule" value="${esc(item)}"><label>规则类型<select name="rule_type">${typeSelect}</select></label><label>去重时间<select name="ttl_minutes">${ttlSelect}</select></label><button class="small">保存策略</button></form></details></div>`;
   }).join('');
@@ -836,6 +925,32 @@ document.querySelectorAll('.tab-shell').forEach(shell => {
     }
   }));
 });
+
+function applyRecordGroup(group, refresh=true){
+  const fallback = {forward:'hits', dedup:'dedups', system:'events'};
+  const next = fallback[group] ? group : 'forward';
+  document.querySelectorAll('.record-group-nav [data-record-group]').forEach(button => {
+    button.classList.toggle('active', button.dataset.recordGroup === next);
+  });
+  document.querySelectorAll('.inner-record-tabs .tab-btn[data-record-group-item]').forEach(button => {
+    button.hidden = button.dataset.recordGroupItem !== next;
+  });
+  const shell = document.querySelector('.inner-record-tabs');
+  const target = shell && shell.querySelector('.tab-btn[data-tab="' + fallback[next] + '"]');
+  if(target){
+    if(!target.classList.contains('active')){
+      target.click();
+    }else if(refresh){
+      requestFullState('records-group');
+    }
+  }
+}
+
+document.querySelectorAll('.record-group-nav [data-record-group]').forEach(button => {
+  button.addEventListener('click', () => applyRecordGroup(button.dataset.recordGroup || 'forward'));
+});
+applyRecordGroup('forward', false);
+
 document.querySelectorAll('[data-monitor-view]').forEach(btn => btn.addEventListener('click', () => {
   document.querySelectorAll('[data-monitor-view]').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active'); currentMonitorView = btn.dataset.monitorView; renderDialogs();
@@ -862,6 +977,18 @@ if(monitorFoldBtn && monitorBody){
 }
 
 
+const initialHashPage = pageFromHash();
+if(initialHashPage === 'system'){
+  document.body.dataset.systemView = systemViewFromHash();
+}
+applyMainPage(initialHashPage, false);
+window.addEventListener('hashchange', () => {
+  const hashPage = pageFromHash();
+  if(hashPage === 'system'){
+    document.body.dataset.systemView = systemViewFromHash();
+  }
+  applyMainPage(hashPage, false);
+});
 bindAjaxForms();
 requestFullState('initial');
 document.addEventListener('visibilitychange', handleVisibilityChange);

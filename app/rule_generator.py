@@ -4,7 +4,9 @@ from typing import Any
 import regex as _regex
 
 from rule_policy import default_policy
-from rule_types import available_rule_types, get_rule_type_config
+from rule_types import available_rule_types as available_rule_types, get_rule_type_config
+
+__all__ = ["available_rule_types", "generate_rule"]
 
 
 LOTTERY_ID_LINE_RE = re.compile(

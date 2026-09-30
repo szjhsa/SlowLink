@@ -10,8 +10,12 @@ import json
 import os
 import re
 import shutil
+import tempfile
+import uuid
 import zipfile
 from pathlib import Path
+
+import regex as _regex
 
 from config import APP_VERSION
 from rule_types import ALLOWED_GENERATOR_STRATEGIES
@@ -23,6 +27,8 @@ DEFAULT_PLUGIN = "builtin"
 ACTIVE_PLUGIN_KEY = "active_plugin"
 PLUGIN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 MAX_PLUGIN_BYTES = 10 * 1024 * 1024
+MAX_PLUGIN_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_PLUGIN_FILES = 1000
 
 _RULES_CACHE: dict[str, dict] = {}
 _MANIFEST_CACHE: dict[str, dict] = {}
@@ -64,12 +70,16 @@ def active_plugin_id() -> str:
     if env_id:
         if env_id in {"", "none", "off"}:
             return ""
+        if not PLUGIN_ID_RE.fullmatch(env_id):
+            return ""
         return env_id if (plugin_dir(env_id) / "plugin.json").exists() else ""
     redis_id = _redis_value(ACTIVE_PLUGIN_KEY, None)
     if redis_id is None:
         return DEFAULT_PLUGIN if _builtin_available() else ""
     redis_id = str(redis_id).strip()
     if redis_id in {"", "none", "off"}:
+        return ""
+    if not PLUGIN_ID_RE.fullmatch(redis_id):
         return ""
     return redis_id if (plugin_dir(redis_id) / "plugin.json").exists() else ""
 
@@ -81,6 +91,9 @@ def _builtin_available() -> bool:
 
 
 def plugin_dir(plugin_id: str) -> Path:
+    plugin_id = str(plugin_id or "").strip()
+    if not PLUGIN_ID_RE.fullmatch(plugin_id):
+        raise ValueError("插件 ID 无效")
     if plugin_id == DEFAULT_PLUGIN:
         upload_candidate = UPLOAD_ROOT / plugin_id
         if upload_candidate.exists():
@@ -202,6 +215,36 @@ def validate_rules_data(rules: dict) -> None:
         if not isinstance(rules.get(section), dict):
             raise ValueError(f"rules.json 缺少 section：{section}")
 
+    matcher = rules["matcher"]
+    for key in (
+        "code_line_pattern",
+        "inv_code_pattern",
+        "usage_status_pattern",
+        "closed_register_pattern",
+        "registration_status_pattern",
+        "exhausted_register_pattern",
+        "registration_success_pattern",
+    ):
+        _validate_regex(matcher.get(key), f"matcher.{key}", _regex_engine="re", flags=re.I | re.M)
+
+    code_rules = rules["code_rules"]
+    default_rules = code_rules.get("default_rules")
+    if default_rules is not None and not isinstance(default_rules, list):
+        raise ValueError("code_rules.default_rules 必须是数组")
+    for index, rule in enumerate(default_rules or []):
+        if not isinstance(rule, dict):
+            raise ValueError(f"code_rules.default_rules.{index} 必须是对象")
+        _validate_regex(
+            rule.get("pattern"),
+            f"code_rules.default_rules.{index}.pattern",
+            _regex_engine="regex",
+            flags=_regex.I | _regex.M | _regex.S,
+        )
+
+    dedup = rules["dedup"]
+    for key in ("lottery_id_pattern", "lottery_seed_pattern"):
+        _validate_regex(dedup.get(key), f"dedup.{key}", _regex_engine="re", flags=re.I)
+
     rule_types = rules.get("rule_types")
     if rule_types is not None:
         if not isinstance(rule_types, dict):
@@ -236,8 +279,44 @@ def validate_rules_data(rules: dict) -> None:
                 raise ValueError(f"rule_generator.types.{type_id}.aliases 必须是数组")
 
 
+def _validate_regex(value, field: str, _regex_engine: str, flags: int) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise ValueError(f"{field} 必须是字符串")
+    if not value.strip():
+        return
+    pattern = str(value)
+    try:
+        if _regex_engine == "regex":
+            _regex.compile(pattern, flags)
+        else:
+            re.compile(pattern, flags)
+    except Exception as exc:
+        raise ValueError(f"{field} 正则无效：{exc}") from exc
+
+
+def validate_plugin(plugin_id: str) -> dict:
+    plugin_id = str(plugin_id or "").strip()
+    item = read_json(manifest_path(plugin_id))
+    if not item:
+        raise ValueError("插件不存在或 plugin.json 无效")
+    _validate_manifest(item)
+    if str(item.get("id") or "").strip() != plugin_id:
+        raise ValueError("插件目录与 manifest id 不一致")
+    rules_data = read_json(rules_path(plugin_id))
+    validate_rules_data(rules_data)
+    return item
+
+
 def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
     names = zf.namelist()
+    files = [info for info in zf.infolist() if not info.is_dir()]
+    if len(files) > MAX_PLUGIN_FILES:
+        raise ValueError("插件包文件数量超过限制")
+    if sum(int(info.file_size or 0) for info in files) > MAX_PLUGIN_UNCOMPRESSED_BYTES:
+        raise ValueError("插件包解压后超过 50MB 限制")
+
     manifest_rel = None
     rules_rel = None
     for name in names:
@@ -310,14 +389,15 @@ def install_plugin(raw: bytes) -> dict:
         zf = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile:
         raise ValueError("插件文件不是有效的 zip")
+    staging = None
     try:
         with zf:
-            staging = UPLOAD_ROOT / ("_staging_" + str(os.getpid()))
+            UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+            staging = Path(tempfile.mkdtemp(prefix="_staging_", dir=UPLOAD_ROOT))
             plugin_id = _safe_extract(zf, staging)
             target = _install_target(plugin_id)
-            UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
             target.parent.mkdir(parents=True, exist_ok=True)
-            backup = target.with_name(f"{target.name}.bak-{os.getpid()}")
+            backup = target.with_name(f"{target.name}.bak-{uuid.uuid4().hex}")
             if target.exists():
                 if backup.exists():
                     shutil.rmtree(backup, ignore_errors=True)
@@ -331,8 +411,7 @@ def install_plugin(raw: bytes) -> dict:
             else:
                 shutil.move(str(staging), str(target))
     except Exception:
-        staging = UPLOAD_ROOT / ("_staging_" + str(os.getpid()))
-        if staging.exists():
+        if staging is not None and staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
         raise
     invalidate()
@@ -341,7 +420,7 @@ def install_plugin(raw: bytes) -> dict:
 
 def uninstall_plugin(plugin_id: str) -> bool:
     plugin_id = str(plugin_id or "").strip()
-    if not plugin_id:
+    if not plugin_id or not PLUGIN_ID_RE.fullmatch(plugin_id):
         return False
     target = plugin_dir(plugin_id)
     if not target.exists():
@@ -355,14 +434,28 @@ def uninstall_plugin(plugin_id: str) -> bool:
 
 def activate_plugin(plugin_id: str) -> None:
     plugin_id = str(plugin_id or "").strip()
-    if plugin_id and not (plugin_dir(plugin_id) / "plugin.json").exists():
-        raise ValueError("插件不存在")
+    if plugin_id:
+        validate_plugin(plugin_id)
     try:
         from redis_store import set_value
         set_value(ACTIVE_PLUGIN_KEY, plugin_id)
     except Exception:
         pass
     invalidate()
+
+
+def switch_plugin(plugin_id: str) -> None:
+    previous_plugin = active_plugin_id()
+    activate_plugin(plugin_id)
+    try:
+        reload_all()
+    except Exception:
+        try:
+            activate_plugin(previous_plugin)
+            reload_all()
+        except Exception:
+            pass
+        raise
 
 
 def reload_all() -> None:

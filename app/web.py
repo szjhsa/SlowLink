@@ -41,12 +41,12 @@ from code_rules import (
     update_code_rule,
 )
 from plugin_registry import (
-    activate_plugin,
     active_plugin_id,
     install_plugin,
     list_plugins,
     manifest as plugin_manifest,
     reload_all as reload_plugin_rules,
+    switch_plugin,
     uninstall_plugin,
 )
 from redis_store import (
@@ -1623,11 +1623,7 @@ def plugin_upload():
         if not raw:
             raw = request.form.get("plugin_zip", "").encode("utf-8", errors="ignore")
         item = install_plugin(raw)
-        activate_plugin(str(item.get("id") or ""))
-        try:
-            reload_plugin_rules()
-        except Exception:
-            pass
+        switch_plugin(str(item.get("id") or ""))
         invalidate_rule_cache()
         clear_ttl_cache()
         try:
@@ -1648,18 +1644,14 @@ def plugin_activate_route():
         return gate
     plugin_id = request.form.get("plugin_id", "").strip()
     try:
-        activate_plugin(plugin_id)
-        try:
-            reload_plugin_rules()
-        except Exception:
-            pass
+        switch_plugin(plugin_id)
         invalidate_rule_cache()
         clear_ttl_cache()
         try:
             manager.clear_runtime_cache()
         except Exception:
             pass
-        return done(f"插件已停用" if not plugin_id else f"插件已切换：{plugin_id}", "success")
+        return done("插件已停用" if not plugin_id else f"插件已切换：{plugin_id}", "success")
     except Exception as e:
         return done(f"插件切换失败：{e}", "error", ok=False)
 
@@ -1673,14 +1665,18 @@ def plugin_uninstall_route():
     if not plugin_id:
         return done("缺少插件 ID", "error", ok=False)
     was_active = plugin_id == active_plugin_id()
-    if not uninstall_plugin(plugin_id):
-        return done("插件删除失败：不存在", "error", ok=False)
     if was_active:
-        activate_plugin("")
-    try:
-        reload_plugin_rules()
-    except Exception:
-        pass
+        try:
+            switch_plugin("")
+        except Exception as e:
+            return done(f"停用插件失败：{e}", "error", ok=False)
+    if not uninstall_plugin(plugin_id):
+        if was_active:
+            try:
+                switch_plugin(plugin_id)
+            except Exception:
+                pass
+        return done("插件删除失败：不存在", "error", ok=False)
     invalidate_rule_cache()
     clear_ttl_cache()
     try:

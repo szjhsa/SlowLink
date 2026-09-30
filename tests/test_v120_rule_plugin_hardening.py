@@ -192,6 +192,21 @@ class RulePluginHardeningV120Tests(unittest.TestCase):
         result = json.loads(proc.stdout)
         self.assertLess(result["elapsed_ms"], 500)
 
+    def test_page_escapes_plugin_type_options(self):
+        template = (APP / "templates" / "index.html").read_text(encoding="utf-8-sig")
+
+        self.assertIn("value: String(item.id ?? '')", template)
+        self.assertIn("label: String(item.label ?? '')", template)
+        self.assertIn('value="${esc(option.value)}"', template)
+        self.assertIn(">${esc(option.label)}</option>", template)
+
+    def test_page_restores_deep_links_from_hash(self):
+        template = (APP / "templates" / "index.html").read_text(encoding="utf-8-sig")
+
+        self.assertIn("function pageFromHash()", template)
+        self.assertIn("function systemViewFromHash()", template)
+        self.assertIn("window.addEventListener('hashchange'", template)
+        self.assertIn("history.replaceState(null, '', hash)", template)
 
 if __name__ == "__main__":
     unittest.main()
