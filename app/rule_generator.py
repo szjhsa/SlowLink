@@ -40,6 +40,9 @@ WHITELIST_CODE_RE = _regex.compile(
     re.I,
 )
 INVITE_CODE_RE = _regex.compile(r"\b(INV-[A-Z0-9]+(?:-[A-Z0-9]+)+)\b", re.I)
+BARE_CODE_RE = _regex.compile(
+    r"(?<![A-Za-z0-9])([A-Za-z]{2,8}[A-Za-z0-9]{4,56})(?![A-Za-z0-9])"
+)
 
 
 def normalize_rule_type(rule_type: str) -> str:
@@ -65,7 +68,62 @@ def _line_pattern(line: str) -> str:
     return r"(?m)^\s*" + r"\s+".join(re.escape(part) for part in parts) + r"\s*$"
 
 
+def _looks_like_code_rule(rule: str) -> bool:
+    low = str(rule or "").lower()
+    if any(word in low for word in ("register", "renew", "whitelist", "invite")):
+        return True
+    return "[a-z" in low and ("[a-z0-9]" in low or "[a-za-z0-9]" in low)
+
+
+def _select_existing_rule_pattern(sample: str, candidates) -> str:
+    matches = []
+    for rule in candidates:
+        rule = str(rule or "").strip()
+        if not rule or not _looks_like_code_rule(rule):
+            continue
+        try:
+            if _regex.search(rule, sample, timeout=0.05):
+                matches.append(rule)
+        except (TimeoutError, _regex.error):
+            continue
+    return min(matches, key=len) if matches else ""
+
+
+def _matching_existing_regex_pattern(sample: str) -> str:
+    try:
+        from redis_store import smembers
+
+        rules = set(smembers("regex_rules"))
+        disabled = set(smembers("regex_rules_disabled"))
+        expanded = []
+        for blob in rules:
+            for rule in str(blob or "").split(";;"):
+                rule = rule.strip()
+                if rule and rule not in disabled:
+                    expanded.append(rule)
+        return _select_existing_rule_pattern(sample, expanded)
+    except Exception:
+        return ""
+
+
 def _code_pattern(sample: str) -> tuple[str, str]:
+    try:
+        from code_rules import extract_code_detail
+
+        detail = extract_code_detail(sample) or {}
+        configured_pattern = str(detail.get("pattern") or "").strip()
+        if configured_pattern and configured_pattern not in {
+            "telegram_bot_start_register_renew",
+            "web_invite_path_code",
+        }:
+            return configured_pattern, "使用现有码识别规则生成通用匹配"
+    except Exception:
+        pass
+
+    existing_rule_pattern = _matching_existing_regex_pattern(sample)
+    if existing_rule_pattern:
+        return existing_rule_pattern, "使用已有规则中的码格式生成通用匹配"
+
     try:
         match = REGISTER_RENEW_CODE_RE.search(sample, timeout=0.05)
     except TimeoutError:
@@ -78,6 +136,31 @@ def _code_pattern(sample: str) -> tuple[str, str]:
         match = INVITE_CODE_RE.search(sample)
         code = match.group(1).strip() if match else ""
     if not code:
+        for candidate in BARE_CODE_RE.findall(sample):
+            if len(candidate) < 8 or not any(ch.isdigit() for ch in candidate):
+                continue
+            prefix_match = re.match(r"([A-Za-z]{2,8})([A-Za-z0-9]+)$", candidate)
+            if not prefix_match:
+                continue
+            prefix, tail = prefix_match.groups()
+            if len(tail) < 4:
+                continue
+            if all(ch.isupper() or ch.isdigit() for ch in tail):
+                tail_class = "[A-Z0-9]"
+            elif all(ch.islower() or ch.isdigit() for ch in tail):
+                tail_class = "[a-z0-9]"
+            else:
+                tail_class = "[A-Za-z0-9]"
+            return (
+                r"(?<![A-Za-z0-9])"
+                + re.escape(prefix)
+                + tail_class
+                + "{"
+                + str(len(tail))
+                + r"}"
+                + r"(?![A-Za-z0-9])",
+                "根据固定前缀和后续随机段生成通用码规则",
+            )
         raise ValueError("没有识别到完整码，请检查这条消息")
 
     for marker in ("Register_", "Renew_"):
@@ -136,7 +219,7 @@ def generate_rule(rule_type: str, sample: str) -> dict[str, Any]:
         pattern = _line_pattern(line)
         reason = "按首条有效文本生成精确匹配规则"
 
-    re.compile(pattern, re.I | re.M)
+    _regex.compile(pattern, re.I | re.M)
     policy = default_policy(normalized_type)
     return {
         "pattern": pattern,

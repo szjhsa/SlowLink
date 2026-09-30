@@ -48,6 +48,19 @@ class RuleGeneratorV110Tests(unittest.TestCase):
             )
         )
 
+    def test_bare_ck_code_generates_reusable_prefix_rule(self):
+        original = rule_generator._matching_existing_regex_pattern
+        rule_generator._matching_existing_regex_pattern = lambda _sample: r"\bCK[A-Z0-9]{12}\b"
+        try:
+            result = rule_generator.generate_rule("码子", "CKWIS3PD97M3F6")
+        finally:
+            rule_generator._matching_existing_regex_pattern = original
+
+        self.assertEqual(result["rule_type"], "code")
+        self.assertIsNotNone(re.search(result["pattern"], "CKWIS3PD97M3F6"))
+        self.assertIsNotNone(re.search(result["pattern"], "CK7F2Q9LMN4P1X"))
+        self.assertIsNone(re.search(result["pattern"], "XXWIS3PD97M3F6"))
+
     def test_keyword_message_generates_escaped_keyword_rule(self):
         sample = "🍀 祝所有参与者好运！"
 
