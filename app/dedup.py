@@ -5,6 +5,8 @@ import time
 import unicodedata
 from typing import Any
 
+import regex as _regex
+
 from invite_path_codes import extract_invite_path_codes
 from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from redis_store import r, sha, format_time
@@ -503,14 +505,14 @@ REGISTER_RENEW_SUFFIX_BOUNDARY = (
     r"(?=$|\s|[，。！？？；：、）】]"
     r"|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
 )
-REGISTER_RENEW_CODE_RE = re.compile(
+REGISTER_RENEW_CODE_RE = _regex.compile(
     r"(?<![A-Za-z0-9_-])([^\s/?&=#]+(?:-[^\s/?&=#]+)*-\d+-(?:Register|Renew)_"
     + REGISTER_RENEW_SUFFIX_TOKEN_PATTERN
     + r"+?)"
     + REGISTER_RENEW_SUFFIX_BOUNDARY,
     re.I,
 )
-HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
+HYPHEN_REGISTER_RENEW_RE = _regex.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
 
 SOURCE_LINE_HINTS = [
     "官方频道", "频道", "交流群", "官方群", "订阅", "群组", "发布", "通知频道"
@@ -522,13 +524,19 @@ def _register_renew_code_fingerprints(text: str) -> list[str]:
         return []
     fingerprints: list[str] = []
     seen: set[str] = set()
+    def safe_finditer(pattern, value: str) -> list:
+        try:
+            return list(pattern.finditer(value or "", timeout=0.05))
+        except TimeoutError:
+            return []
+
     codes = [
         match.group(1).strip()
-        for match in REGISTER_RENEW_CODE_RE.finditer(text or "")
+        for match in safe_finditer(REGISTER_RENEW_CODE_RE, text)
     ]
     codes.extend(
         match.group(0).strip()
-        for match in HYPHEN_REGISTER_RENEW_RE.finditer(text or "")
+        for match in safe_finditer(HYPHEN_REGISTER_RENEW_RE, text)
     )
     codes.extend(extract_telegram_start_register_renew_codes(text))
     for code in codes:
@@ -667,11 +675,18 @@ def build_profile(
         lottery_identity = ""
         lottery_global_identity = ""
         lottery_template_identity = ""
+        identity_fallback = False
         if strategy == "code_identity":
             identity = next((str(x) for x in (code_identities or []) if str(x)), "")
-            identity_source = identity or normalized or str(text or "")
-            identity_hash = hashlib.sha256(identity_source.encode("utf-8")).hexdigest()
-            dedup_id = "code:" + identity_hash
+            if identity:
+                identity_source = identity
+                identity_hash = hashlib.sha256(identity_source.encode("utf-8")).hexdigest()
+                dedup_id = "code:" + identity_hash
+            else:
+                identity_fallback = True
+                strategy = "code_fallback_text"
+                identity_source = normalized or str(text or "")
+                dedup_id = "code-fallback:" + text_hash
             activity = "code"
             core = identity_source[:300]
         elif strategy == "lottery_identity":
@@ -710,6 +725,7 @@ def build_profile(
             "rule_type": rule_type,
             "rule_policy": dict(policy),
             "ttl_minutes": policy_ttl,
+            "identity_fallback": identity_fallback,
         }
 
     activity = classify_activity(text)
@@ -838,7 +854,9 @@ def check_and_mark(
 
     if not content_is_new:
         _release_new_keys(new_keys)
-        if profile.get("dedup_strategy") == "code_identity":
+        if profile.get("identity_fallback"):
+            reason = f"未识别到完整码，按相同文本内容重复（{real_ttl_minutes}分钟内）"
+        elif profile.get("dedup_strategy") == "code_identity":
             reason = f"相同完整码重复（{real_ttl_minutes}分钟内）"
         elif profile.get("lottery_identity"):
             reason = f"相同抽奖 ID 重复（{real_ttl_minutes}分钟内）"

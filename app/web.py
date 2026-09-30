@@ -972,7 +972,10 @@ def add_generated_rule_route():
     sadd("regex_rules", pattern)
     try:
         save_rule_policy(pattern, rule_type)
+        if policy.get("dedup_strategy") == "code_identity":
+            add_code_rule("生成码规则", pattern, "0", True, False, False)
     except Exception:
+        delete_rule_policy(pattern)
         srem("regex_rules", pattern)
         raise
     invalidate_rule_cache()
@@ -1527,7 +1530,12 @@ def import_config():
                 rule = str(policy.pop("rule", "") or "")
                 rule_type = str(policy.get("rule_type") or "")
                 if rule and rule_type:
-                    save_rule_policy(rule, rule_type, overrides=policy)
+                    save_rule_policy(
+                        rule,
+                        rule_type,
+                        overrides=policy,
+                        allow_unavailable=True,
+                    )
             if policy_items:
                 imported.append("规则去重策略")
         if mode != "rules_only":

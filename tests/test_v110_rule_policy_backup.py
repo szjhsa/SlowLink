@@ -25,7 +25,8 @@ class RulePolicyBackupV110Tests(unittest.TestCase):
 
         self.assertIn('"rule_policies": [', source)
         self.assertIn('snap["rule_policies"] = ("hash", r.hgetall(RULE_POLICY_KEY) or {})', source)
-        self.assertIn("save_rule_policy(rule, rule_type, overrides=policy)", source)
+        self.assertIn("save_rule_policy(", source)
+        self.assertIn("allow_unavailable=True", source)
 
     def test_regex_test_uses_matched_rule_policy(self):
         source = read(APP / "web.py")

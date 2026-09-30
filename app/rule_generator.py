@@ -4,16 +4,8 @@ from typing import Any
 import regex as _regex
 
 from rule_policy import default_policy
+from rule_types import available_rule_types, get_rule_type_config
 
-
-CORE_RULE_TYPES = {
-    "keyword": {
-        "id": "keyword",
-        "label": "关键词",
-        "strategy": "line",
-        "aliases": ["keyword", "关键词", "文本"],
-    },
-}
 
 LOTTERY_ID_LINE_RE = re.compile(
     r"(?m)^[^\n]*(?:抽奖\s*ID|lottery\s*id)\s*[:：]\s*\S+",
@@ -38,45 +30,8 @@ BARE_CODE_RE = _regex.compile(
 )
 
 
-def available_rule_types() -> list[dict]:
-    items = [dict(CORE_RULE_TYPES["keyword"])]
-    try:
-        from plugin_registry import builtin_section
-
-        section = builtin_section("rule_generator", {}) or {}
-        plugin_types = section.get("types")
-        if not isinstance(plugin_types, dict):
-            return items
-        for type_id, raw in plugin_types.items():
-            if not isinstance(raw, dict):
-                continue
-            normalized_id = str(type_id or "").strip().lower()
-            label = str(raw.get("label") or "").strip()
-            strategy = str(raw.get("strategy") or "").strip().lower()
-            aliases = raw.get("aliases")
-            if not normalized_id or not label or not strategy:
-                continue
-            items.append({
-                "id": normalized_id,
-                "label": label,
-                "strategy": strategy,
-                "aliases": [
-                    str(alias).strip().lower()
-                    for alias in (aliases if isinstance(aliases, list) else [])
-                    if str(alias).strip()
-                ],
-            })
-    except Exception:
-        pass
-    return items
-
-
 def _rule_type_config(rule_type: str) -> dict:
-    key = str(rule_type or "").strip().lower()
-    for item in available_rule_types():
-        if key == item["id"] or key in item.get("aliases", []):
-            return item
-    raise ValueError("当前插件未提供该生成类型")
+    return get_rule_type_config(rule_type)
 
 
 def normalize_rule_type(rule_type: str) -> str:

@@ -11,13 +11,18 @@ sys.path.insert(0, str(APP))
 os.environ.setdefault("SLOWLINK_ACTIVE_PLUGIN", "builtin")
 
 import rule_generator
+import rule_types
 
 
 class RuleGeneratorV110Tests(unittest.TestCase):
+    def setUp(self):
+        rule_types.clear_cache()
+
     def test_builtin_plugin_exposes_code_lottery_and_exclude_types(self):
         old = os.environ.get("SLOWLINK_ACTIVE_PLUGIN")
         os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "builtin"
         try:
+            rule_types.clear_cache()
             ids = [item["id"] for item in rule_generator.available_rule_types()]
         finally:
             if old is None:
@@ -34,6 +39,7 @@ class RuleGeneratorV110Tests(unittest.TestCase):
         old = os.environ.get("SLOWLINK_ACTIVE_PLUGIN")
         os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "off"
         try:
+            rule_types.clear_cache()
             ids = [item["id"] for item in rule_generator.available_rule_types()]
             with self.assertRaises(ValueError):
                 rule_generator.generate_rule("码子", "CKWIS3PD97M3F6")

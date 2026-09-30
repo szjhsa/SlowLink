@@ -6,7 +6,7 @@ from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
 from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from plugin_registry import active_rules, builtin_section
-from rule_policy import get_rule_policy
+from rule_policy import get_rule_policy, policy_is_available
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
@@ -244,9 +244,16 @@ def invalidate_rule_cache():
 
 def _rule_policy_fields(rule: str) -> dict:
     policy = get_rule_policy(rule) or {}
+    if policy and not policy_is_available(policy):
+        return {
+            "rule_type": "",
+            "rule_policy": {},
+            "rule_policy_unavailable": True,
+        }
     return {
         "rule_type": str(policy.get("rule_type") or ""),
         "rule_policy": policy,
+        "rule_policy_unavailable": False,
     }
 
 

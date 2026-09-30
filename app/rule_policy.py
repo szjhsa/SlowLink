@@ -3,6 +3,8 @@ import json
 import time
 from typing import Any
 
+from rule_types import is_type_available
+
 
 RULE_POLICY_KEY = "rule_policies"
 RULE_POLICY_CACHE_TTL = 60.0
@@ -67,8 +69,10 @@ def _normalize_ttl(value: Any, default: int) -> int:
         return max(0, int(default))
 
 
-def default_policy(rule_type: str) -> dict[str, Any]:
+def default_policy(rule_type: str, *, require_available: bool = True) -> dict[str, Any]:
     key = str(rule_type or "").strip().lower()
+    if require_available and not is_type_available(key):
+        raise ValueError("当前插件未提供该规则类型")
     base = RULE_TYPE_DEFAULTS.get(key)
     if not base:
         raise ValueError("未知规则类型")
@@ -94,7 +98,7 @@ def normalize_policy(value: dict[str, Any] | None, rule_type: str = "") -> dict[
     raw = dict(value or {})
     selected_type = str(raw.get("rule_type") or rule_type or "").strip().lower()
     try:
-        base = default_policy(selected_type)
+        base = default_policy(selected_type, require_available=False)
     except ValueError:
         return {}
     base.update(raw)
@@ -115,6 +119,12 @@ def should_run_code_dedup(policy: dict[str, Any] | None) -> bool:
         str(policy.get("rule_type") or "") == "code"
         or str(policy.get("dedup_strategy") or "") == "code_identity"
     )
+
+
+def policy_is_available(policy: dict[str, Any] | None) -> bool:
+    if not policy:
+        return True
+    return is_type_available(str(policy.get("rule_type") or ""))
 
 
 def _get_store(store):
@@ -170,11 +180,12 @@ def save_rule_policy(
     rule_type: str,
     store=None,
     overrides: dict[str, Any] | None = None,
+    allow_unavailable: bool = False,
 ) -> dict[str, Any]:
     rule = str(rule or "")
     if not rule:
         raise ValueError("规则不能为空")
-    policy = default_policy(rule_type)
+    policy = default_policy(rule_type, require_available=not allow_unavailable)
     if overrides:
         policy.update(overrides)
     policy = normalize_policy(policy, rule_type)

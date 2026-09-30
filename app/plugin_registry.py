@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 
 from config import APP_VERSION
+from rule_types import ALLOWED_GENERATOR_STRATEGIES
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parent / "plugins"
@@ -194,6 +195,47 @@ def _validate_manifest(item: dict) -> None:
         raise ValueError(f"插件需要 SlowLink >= {item.get('min_core_version')}，当前为 {APP_VERSION}")
 
 
+def validate_rules_data(rules: dict) -> None:
+    if not isinstance(rules, dict):
+        raise ValueError("rules.json 格式无效")
+    for section in ("matcher", "code_rules", "dedup", "flow"):
+        if not isinstance(rules.get(section), dict):
+            raise ValueError(f"rules.json 缺少 section：{section}")
+
+    rule_types = rules.get("rule_types")
+    if rule_types is not None:
+        if not isinstance(rule_types, dict):
+            raise ValueError("rule_types 必须是对象")
+        for type_id, item in rule_types.items():
+            if not isinstance(item, dict):
+                raise ValueError(f"rule_types.{type_id} 必须是对象")
+            if not str(item.get("label") or "").strip():
+                raise ValueError(f"rule_types.{type_id} 缺少 label")
+            if not str(item.get("dedup_strategy") or "").strip():
+                raise ValueError(f"rule_types.{type_id} 缺少 dedup_strategy")
+
+    generator = rules.get("rule_generator")
+    if generator is not None:
+        if not isinstance(generator, dict):
+            raise ValueError("rule_generator 必须是对象")
+        types = generator.get("types")
+        if not isinstance(types, dict):
+            raise ValueError("rule_generator.types 必须是对象")
+        for type_id, item in types.items():
+            if not isinstance(item, dict):
+                raise ValueError(f"rule_generator.types.{type_id} 必须是对象")
+            if not str(item.get("label") or "").strip():
+                raise ValueError(f"rule_generator.types.{type_id} 缺少 label")
+            strategy = str(item.get("strategy") or "").strip().lower()
+            if strategy not in ALLOWED_GENERATOR_STRATEGIES:
+                raise ValueError(
+                    f"rule_generator.types.{type_id} 使用了不支持的 strategy：{strategy}"
+                )
+            aliases = item.get("aliases")
+            if aliases is not None and not isinstance(aliases, list):
+                raise ValueError(f"rule_generator.types.{type_id}.aliases 必须是数组")
+
+
 def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
     names = zf.namelist()
     manifest_rel = None
@@ -223,6 +265,8 @@ def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
     manifest_raw = zf.read(manifest_rel)
     item = json.loads(manifest_raw.decode("utf-8"))
     _validate_manifest(item)
+    rules_raw = zf.read(rules_rel)
+    validate_rules_data(json.loads(rules_raw.decode("utf-8")))
     plugin_id = str(item.get("id") or "").strip()
     if not PLUGIN_ID_RE.fullmatch(plugin_id):
         raise ValueError("插件 ID 无效")
@@ -327,8 +371,10 @@ def reload_all() -> None:
     from code_rules import reload_builtins as reload_code_builtins
     from dedup import reload_builtins as reload_dedup_builtins
     from rule_policy import clear_cache as clear_rule_policy_cache
+    from rule_types import clear_cache as clear_rule_types_cache
 
     reload_matcher_builtins()
     reload_code_builtins()
     reload_dedup_builtins()
     clear_rule_policy_cache()
+    clear_rule_types_cache()

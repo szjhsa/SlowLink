@@ -10,10 +10,14 @@ sys.path.insert(0, str(APP))
 os.environ.setdefault("SLOWLINK_ACTIVE_PLUGIN", "builtin")
 
 import rule_policy
+import rule_types
 from tests.test_v13883_cross_template_lottery_dedup import load_dedup
 
 
 class PolicyDrivenDedupV110Tests(unittest.TestCase):
+    def setUp(self):
+        rule_types.clear_cache()
+
     def test_code_policy_uses_complete_code_identity(self):
         dedup, client = load_dedup()
         policy = rule_policy.default_policy("code")
