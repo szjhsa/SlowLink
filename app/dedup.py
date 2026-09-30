@@ -485,6 +485,11 @@ def ttl_minutes_for_activity(activity: str, fallback: int | None = None) -> int:
 
 
 def ttl_minutes_for_profile(profile: dict[str, Any], fallback: int | None = None) -> int:
+    if "ttl_minutes" in profile:
+        try:
+            return max(0, int(profile.get("ttl_minutes") or 0))
+        except Exception:
+            pass
     activity = str(profile.get("activity") or "other")
     if profile.get("ttl_policy") == "long_term" and activity in {"lottery", "joint_lottery", "register", "invite", "other"}:
         return ttl_minutes_for_activity("long_term", fallback)
@@ -640,8 +645,73 @@ def normalize_for_text_dedup(text: str) -> str:
 
 # ---- Profile building ----
 
-def build_profile(text: str, message_link: str = "", source: str = "") -> dict[str, Any]:
+def build_profile(
+    text: str,
+    message_link: str = "",
+    source: str = "",
+    policy: dict[str, Any] | None = None,
+    code_identities: list[str] | None = None,
+) -> dict[str, Any]:
     """Build a lightweight activity profile for TTL calculation and UI display."""
+    if policy:
+        rule_type = str(policy.get("rule_type") or "").strip().lower()
+        strategy = str(policy.get("dedup_strategy") or "normalized_text")
+        policy_ttl = max(0, int(policy.get("ttl_minutes") or 0))
+        if strategy == "code_identity":
+            # Code-rule dedup must not run the heuristic text normalizer; it can
+            # backtrack on adversarial hyphenated messages.
+            normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+        else:
+            normalized = normalize_for_text_dedup(text)
+        text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        lottery_identity = ""
+        lottery_global_identity = ""
+        lottery_template_identity = ""
+        if strategy == "code_identity":
+            identity = next((str(x) for x in (code_identities or []) if str(x)), "")
+            identity_source = identity or normalized or str(text or "")
+            identity_hash = hashlib.sha256(identity_source.encode("utf-8")).hexdigest()
+            dedup_id = "code:" + identity_hash
+            activity = "code"
+            core = identity_source[:300]
+        elif strategy == "lottery_identity":
+            activity = "lottery"
+            lottery_identity = extract_lottery_identity(text)
+            if lottery_identity:
+                identity_hash = hashlib.sha256(lottery_identity.encode("utf-8")).hexdigest()
+                dedup_id = "lottery:" + identity_hash
+            else:
+                lottery_global_identity = extract_lottery_global_identity(text)
+                lottery_template_identity = extract_lottery_template_identity(
+                    text, message_link, source
+                )
+                dedup_id = "text:" + text_hash
+            core = normalized[:300]
+        elif strategy == "none":
+            activity = "exclude"
+            dedup_id = "none:" + text_hash
+            core = normalized[:300]
+        else:
+            activity = "keyword"
+            dedup_id = "text:" + text_hash
+            core = normalized[:300]
+        return {
+            "activity": activity,
+            "ttl_policy": "rule_policy",
+            "core": core,
+            "dedup_id": dedup_id,
+            "message_link": message_link,
+            "text_hash": text_hash,
+            "lottery_identity": lottery_identity,
+            "lottery_global_identity": lottery_global_identity,
+            "lottery_template_identity": lottery_template_identity,
+            "lottery_mode": "id" if lottery_identity else "",
+            "dedup_strategy": strategy,
+            "rule_type": rule_type,
+            "rule_policy": dict(policy),
+            "ttl_minutes": policy_ttl,
+        }
+
     activity = classify_activity(text)
     ttl_policy = ttl_policy_for_text(text)
     normalized = normalize_for_text_dedup(text)
@@ -688,17 +758,31 @@ def check_and_mark(
     ttl_minutes: int | None = 20,
     mode: str = "strict",
     source: str = "",
+    policy: dict[str, Any] | None = None,
+    code_identities: list[str] | None = None,
 ) -> tuple[bool, str, dict]:
     """Unified dedup with two layers, both checked in a single Redis pipeline.
 
     Layer 1: Same original message link -> block.
     Layer 2: Same stable lottery identity or normalized text hash -> block.
     """
-    profile = build_profile(text, message_link, source)
+    profile = build_profile(
+        text,
+        message_link,
+        source,
+        policy=policy,
+        code_identities=code_identities,
+    )
     content_key = "dedup:" + profile["dedup_id"]
     link_key = "dedup:link:" + sha(message_link) if message_link else ""
     template_identities: list[str] = []
-    if lottery_template_dedup_mode() == "global":
+    policy_template_mode = str((policy or {}).get("lottery_template_mode") or "")
+    template_mode = (
+        policy_template_mode
+        if policy_template_mode in {"global", "id", "off"}
+        else lottery_template_dedup_mode()
+    )
+    if template_mode == "global":
         seen_identities: set[str] = set()
         for identity in (
             profile.get("lottery_template_identity") or "",

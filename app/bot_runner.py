@@ -27,6 +27,7 @@ import json as _json
 from telegram_session_lock import SESSION_LOCK
 from plugin_registry import active_plugin_id as _plugin_active_id
 from plugin_registry import builtin_value as _plugin_builtin_value
+from rule_policy import should_run_code_dedup
 
 
 TELEGRAM_DELAY_HIGH_SECONDS = 30
@@ -872,6 +873,7 @@ class BotManager:
             analysis = analyze_message(text)
             matched = bool(analysis.get("matched"))
             rule = str(analysis.get("rule") or "")
+            rule_policy = analysis.get("rule_policy") or {}
             perf["match_ms"] = int((time.monotonic() - t0) * 1000)
             if not matched:
                 return
@@ -883,6 +885,15 @@ class BotManager:
             })
             code_detail = analysis.get("code_detail") or {}
             source_name = self._source_name(chat)
+
+            if rule_policy and not bool(rule_policy.get("forward", True)):
+                add_hit({
+                    "source": source_name,
+                    "rule": rule[:120],
+                    "status": "规则类型为排除，命中但未转发",
+                })
+                push_event("info", f"排除规则命中：{source_name}")
+                return
 
             # Check excludes before recording hit: prevent misleading "hit" entries
             excludes = self._cached_set("exclude_chats", ttl=60.0)
@@ -921,9 +932,21 @@ class BotManager:
 
             duplicate_identity = ""
             duplicate_code_key = ""
-            code_dedup_enabled = dedup_enabled and code_minutes > 0
+            effective_code_minutes = code_minutes
+            if rule_policy.get("rule_type") == "code":
+                try:
+                    effective_code_minutes = max(
+                        0, int(rule_policy.get("ttl_minutes", code_minutes))
+                    )
+                except Exception:
+                    effective_code_minutes = code_minutes
+            code_dedup_enabled = (
+                dedup_enabled
+                and effective_code_minutes > 0
+                and should_run_code_dedup(rule_policy)
+            )
             if code_identities and code_dedup_enabled:
-                code_ttl = max(60, code_minutes * 60)
+                code_ttl = max(60, effective_code_minutes * 60)
                 for identity in code_identities:
                     normalized_identity = normalize_code_identity(identity)
                     code_key = "dedup:code:" + sha(normalized_identity)
@@ -952,7 +975,15 @@ class BotManager:
                 return
 
             if dedup_enabled:
-                duplicate, reason, dedup_profile = check_and_mark(text, link, None, mode, source_name)
+                duplicate, reason, dedup_profile = check_and_mark(
+                    text,
+                    link,
+                    None,
+                    mode,
+                    source_name,
+                    policy=rule_policy,
+                    code_identities=code_identities,
+                )
                 perf["pre_dedup_ms"] = int((time.monotonic() - t0) * 1000)
                 if duplicate:
                     self._release_pending_dedup(reserved_code_keys)

@@ -183,6 +183,23 @@
     <div class="tab-content">
       <div class="tab-panel active" data-panel="rules">
         <h3>正则规则</h3>
+        <div class="generated-rule-box">
+          <h4>按原消息生成规则</h4>
+          <p class="hint">先选择规则类型，再粘贴原消息；生成后确认添加。</p>
+          <form action="/rule_generate" method="post" class="stack" data-ajax="1" data-result="rule_generate">
+            <label>规则类型
+              <select name="rule_type">
+                <option value="code">码子</option>
+                <option value="lottery">抽奖</option>
+                <option value="keyword">关键词</option>
+                <option value="exclude">排除</option>
+              </select>
+            </label>
+            <textarea name="sample" rows="5" placeholder="把原消息粘贴到这里"></textarea>
+            <button>生成规则</button>
+          </form>
+          <div id="ruleGenerateResult"></div>
+        </div>
         <form action="/add_regex" method="post" class="row" data-ajax="1"><input name="value" placeholder="可以粘贴单条规则，也可以用 ;; 批量分隔"><button>添加</button></form>
         <p class="hint">添加命中后转发的正则规则。</p>
         <div class="collapse-box open-lite"><div class="summary-lite">当前正则规则：<span id="regexCount">{{ regex_rules|length }}</span> 条</div><div class="compact-list rule-list" id="regexList"></div></div>
@@ -597,14 +614,19 @@ function renderSetList(boxId, countId, items, endpoint){
   if(!items || items.length === 0){ box.innerHTML = '<div class="empty">暂无</div>'; return; }
   box.innerHTML = items.map(item => `<div class="item"><span>${esc(item)}</span><form action="${endpoint}" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div>`).join('');
 }
-function renderRegexList(items, disabled){
+function renderRegexList(items, disabled, policies){
   const box = document.getElementById('regexList');
   const count = document.getElementById('regexCount');
   if(count) count.textContent = items ? items.length : 0;
   if(!box) return;
   if(!items || items.length === 0){ box.innerHTML = '<div class="empty">暂无正则规则</div>'; return; }
   const off = new Set(disabled || []);
-  box.innerHTML = items.map(item => `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${esc(item)}</span><div class="regex-actions"><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div></div>`).join('');
+  const policyMap = policies || {};
+  box.innerHTML = items.map(item => {
+    const policy = policyMap[item];
+    const badge = policy ? `<span class="rule-policy-badge">${esc(policy.label || policy.rule_type || '已绑定')} · ${esc(policy.ttl_minutes ?? 0)} 分钟</span> ` : '';
+    return `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${badge}${esc(item)}</span><div class="regex-actions"><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div></div>`;
+  }).join('');
 }
 function renderCodeRules(items){
   const box = document.getElementById('codeRuleList');
@@ -637,7 +659,7 @@ function renderLists(data){
   renderSetList('monitorList','monitorCount',data.monitor_chats || [],'/del_monitor');
   renderSetList('excludeList','excludeCount',data.exclude_chats || [],'/del_exclude');
   renderSetList('excludeTextList','excludeTextCount',data.exclude_texts || [],'/del_exclude_text');
-  renderRegexList(data.regex_rules || [], data.disabled_regex_rules || []);
+  renderRegexList(data.regex_rules || [], data.disabled_regex_rules || [], data.rule_policies || {});
   renderCodeRules(data.code_rules || []);
   bindAjaxForms();
 }
@@ -712,7 +734,24 @@ function renderCollisions(collisions){
 function renderRegexResult(r){
   if(!r) return;
   const box = document.getElementById('debugResult');
-  box.innerHTML = `<div class="debug-result ${r.matched?'ok-box':'warn-box'}"><div><b>命中：</b>${r.matched?'是':'否'}${r.excluded_text_notice?' / 命中排除文本：'+esc(r.excluded_keyword||''):''}${r.usage_notice?' / 已被使用通知过滤':''}${r.closed_register_notice?' / 已关闭注册过滤':''}${r.registration_success_notice?' / 个人注册成功通知过滤':''}</div>${r.rule?'<div><b>命中规则：</b><code>'+esc(r.rule)+'</code></div>':''}${r.candidate?'<div><b>命中文本：</b>'+esc(r.candidate)+'</div>':''}${r.code_note?'<div><b>码识别：</b>'+esc(r.code_rule||'已识别')+' / '+esc(r.code_note)+'</div>':''}<div><b>活动类型：</b>${esc(r.activity)}　<b>去重时间：</b>${r.ttl_minutes==0?'不去重':esc(r.ttl_minutes)+' 分钟'}</div>${r.code_identity?'<div><b>完整码身份：</b><code>'+esc(r.code_identity)+'</code></div>':''}${r.lottery_identity?'<div><b>抽奖唯一字段：</b><code>'+esc(r.lottery_identity)+'</code></div><div><b>抽奖去重模式：</b>'+esc(r.lottery_mode||'id')+'</div>':''}<div><b>去重 ID：</b><code>${esc(r.dedup_id)}</code></div><details class="inner-details"><summary>查看清理结果</summary><div class="code-block"><b>原文本</b><pre>${esc(r.original)}</pre></div><div class="code-block"><b>清理文本</b><pre>${esc(r.normalized)}</pre></div><div class="code-block"><b>紧凑文本</b><pre>${esc(r.compact)}</pre></div><div class="code-block"><b>核心文本</b><pre>${esc(r.core)}</pre></div></details></div>`;
+  box.innerHTML = `<div class="debug-result ${r.matched?'ok-box':'warn-box'}"><div><b>命中：</b>${r.matched?'是':'否'}${r.excluded_text_notice?' / 命中排除文本：'+esc(r.excluded_keyword||''):''}${r.usage_notice?' / 已被使用通知过滤':''}${r.closed_register_notice?' / 已关闭注册过滤':''}${r.registration_success_notice?' / 个人注册成功通知过滤':''}</div>${r.rule?'<div><b>命中规则：</b><code>'+esc(r.rule)+'</code></div>':''}${r.rule_type?'<div><b>规则类型：</b>'+esc((r.rule_policy||{}).label||r.rule_type)+'　<b>绑定策略：</b><code>'+esc((r.rule_policy||{}).dedup_strategy||r.dedup_strategy||'-')+'</code></div>':''}${r.candidate?'<div><b>命中文本：</b>'+esc(r.candidate)+'</div>':''}${r.code_note?'<div><b>码识别：</b>'+esc(r.code_rule||'已识别')+' / '+esc(r.code_note)+'</div>':''}<div><b>活动类型：</b>${esc(r.activity)}　<b>去重时间：</b>${r.ttl_minutes==0?'不去重':esc(r.ttl_minutes)+' 分钟'}</div>${r.code_identity?'<div><b>完整码身份：</b><code>'+esc(r.code_identity)+'</code></div>':''}${r.lottery_identity?'<div><b>抽奖唯一字段：</b><code>'+esc(r.lottery_identity)+'</code></div><div><b>抽奖去重模式：</b>'+esc(r.lottery_mode||'id')+'</div>':''}<div><b>去重 ID：</b><code>${esc(r.dedup_id)}</code></div><details class="inner-details"><summary>查看清理结果</summary><div class="code-block"><b>原文本</b><pre>${esc(r.original)}</pre></div><div class="code-block"><b>清理文本</b><pre>${esc(r.normalized)}</pre></div><div class="code-block"><b>紧凑文本</b><pre>${esc(r.compact)}</pre></div><div class="code-block"><b>核心文本</b><pre>${esc(r.core)}</pre></div></details></div>`;
+}
+function renderRuleGenerateResult(r){
+  if(!r) return;
+  const box = document.getElementById('ruleGenerateResult');
+  if(!box) return;
+  const policy = r.policy || {};
+  box.innerHTML = `<div class="debug-result ok-box">
+    <div><b>生成成功：</b>${esc(r.reason || '')}</div>
+    <div><b>规则类型：</b>${esc(policy.label || r.rule_type)}　<b>去重策略：</b><code>${esc(policy.dedup_strategy || '-')}</code>　<b>去重时间：</b>${esc(policy.ttl_minutes ?? 0)} 分钟</div>
+    <div class="code-block"><b>生成的规则</b><pre>${esc(r.pattern || '')}</pre></div>
+    <form action="/add_generated_rule" method="post" data-ajax="1">
+      <input type="hidden" name="pattern" value="${esc(r.pattern || '')}">
+      <input type="hidden" name="rule_type" value="${esc(r.rule_type || '')}">
+      <button>使用这条规则</button>
+    </form>
+  </div>`;
+  bindAjaxForms();
 }
 function renderPrecheckResult(r){
   if(!r) return;
@@ -758,12 +797,13 @@ function bindAjaxForms(){
         if(!res.ok && data.ok !== false) data.ok = false;
         toast(data.message || (data.ok?'操作成功':'操作失败'), data.kind || (data.ok?'success':'error'));
         if(data.regex_test_result) renderRegexResult(data.regex_test_result);
+        if(data.rule_generate_result) renderRuleGenerateResult(data.rule_generate_result);
         if(data.precheck_result) renderPrecheckResult(data.precheck_result);
         if(data.cache_stats) updateCacheStats(data.cache_stats);
         if(data.ok && form.dataset.reload === '1'){ location.reload(); return; }
         await requestFullState('form-submit');
         if(data.ok && !form.dataset.keepInput){
-          form.querySelectorAll('input[name="value"], textarea[name="text"], input[name="code"], input[name="password"]').forEach(i => { if(i.type !== 'hidden') i.value=''; });
+          form.querySelectorAll('input[name="value"], textarea[name="text"], textarea[name="sample"], input[name="code"], input[name="password"]').forEach(i => { if(i.type !== 'hidden') i.value=''; });
         }
       }catch(err){ toast('操作失败：' + err, 'error'); }
       finally { if(btn){ btn.disabled = false; btn.textContent = old; } }

@@ -216,6 +216,36 @@
       "other": 20
     }
   },
+  "rule_types": {
+    "code": {
+      "label": "码子",
+      "dedup_strategy": "code_identity",
+      "ttl_minutes": 20,
+      "lottery_template_mode": "off",
+      "forward": true
+    },
+    "lottery": {
+      "label": "抽奖",
+      "dedup_strategy": "lottery_identity",
+      "ttl_minutes": 720,
+      "lottery_template_mode": "global",
+      "forward": true
+    },
+    "keyword": {
+      "label": "关键词",
+      "dedup_strategy": "normalized_text",
+      "ttl_minutes": 20,
+      "lottery_template_mode": "off",
+      "forward": true
+    },
+    "exclude": {
+      "label": "排除",
+      "dedup_strategy": "none",
+      "ttl_minutes": 0,
+      "lottery_template_mode": "off",
+      "forward": false
+    }
+  },
   "flow": {
     "priority_keywords": [
       "register",

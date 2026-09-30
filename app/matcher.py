@@ -6,6 +6,7 @@ from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
 from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
 from plugin_registry import active_rules, builtin_section
+from rule_policy import get_rule_policy
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
@@ -241,6 +242,14 @@ def invalidate_rule_cache():
     _EXCLUDE_TEXT_CACHE.update({"ts": 0.0, "raw": None, "items": []})
 
 
+def _rule_policy_fields(rule: str) -> dict:
+    policy = get_rule_policy(rule) or {}
+    return {
+        "rule_type": str(policy.get("rule_type") or ""),
+        "rule_policy": policy,
+    }
+
+
 def _compiled_rules(ttl: float = 60.0):
     """Compile each user rule unchanged with timeout-enabled matching."""
     now = time.monotonic()
@@ -407,6 +416,7 @@ def analyze_message(text: str) -> dict:
                 "compact": compact,
                 "usage_notice": False,
                 "closed_register_notice": False,
+                **_rule_policy_fields(raw),
             }
 
     trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
@@ -419,6 +429,8 @@ def analyze_message(text: str) -> dict:
             "compact": compact,
             "usage_notice": False,
             "closed_register_notice": False,
+            "rule_type": "",
+            "rule_policy": {},
         }
 
     return {

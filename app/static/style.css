@@ -404,6 +404,40 @@ button.secondary:hover { background: rgba(22,119,255,.16); filter: none; }
 }
 body.dark button.secondary { background: #202631; border-color: #2a303a; color: #e6e8eb; }
 body.dark button.secondary:hover { background: #1d2a3c; }
+
+.generated-rule-box {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid rgba(127, 127, 127, .22);
+  border-radius: 10px;
+  background: rgba(127, 127, 127, .05);
+}
+
+.generated-rule-box textarea {
+  width: 100%;
+  min-height: 112px;
+}
+
+.rule-policy-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e8f3ff;
+  color: #0958d9;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+body.dark .generated-rule-box {
+  background: #10141b;
+  border-color: #2a303a;
+}
+
+body.dark .rule-policy-badge {
+  background: #102b4a;
+  color: #8ec5ff;
+}
 body.dark .monitor-summary-bar { background: #10141b; border-color: #2a303a; }
 body.dark .monitor-summary-bar span { background: #202631; }
 

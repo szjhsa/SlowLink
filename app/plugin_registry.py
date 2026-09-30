@@ -326,7 +326,9 @@ def reload_all() -> None:
     from matcher import reload_builtins as reload_matcher_builtins
     from code_rules import reload_builtins as reload_code_builtins
     from dedup import reload_builtins as reload_dedup_builtins
+    from rule_policy import clear_cache as clear_rule_policy_cache
 
     reload_matcher_builtins()
     reload_code_builtins()
     reload_dedup_builtins()
+    clear_rule_policy_cache()

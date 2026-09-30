@@ -20,7 +20,9 @@ class DedupReleaseAndImportFixesV13925Tests(unittest.TestCase):
     def test_code_dedup_is_disabled_when_dedup_disabled_or_zero(self):
         bot_runner = read(APP / "bot_runner.py")
 
-        self.assertIn("code_dedup_enabled = dedup_enabled and code_minutes > 0", bot_runner)
+        self.assertIn("code_dedup_enabled = (", bot_runner)
+        self.assertIn("and effective_code_minutes > 0", bot_runner)
+        self.assertIn("and should_run_code_dedup(rule_policy)", bot_runner)
         self.assertIn("if code_identities and code_dedup_enabled:", bot_runner)
 
     def test_exceptions_release_pending_code_and_text_dedup(self):

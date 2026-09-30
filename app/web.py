@@ -22,6 +22,14 @@ from bot_runner import manager
 from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
 from matcher import analyze_message, rule_diagnostics, invalidate_rule_cache
+from rule_generator import generate_rule
+from rule_policy import (
+    RULE_POLICY_KEY,
+    default_policy,
+    delete_rule_policy,
+    get_rule_policy,
+    save_rule_policy,
+)
 from code_rules import (
     add_code_rule,
     code_rule_diagnostics,
@@ -346,6 +354,12 @@ def _state_payload(light: bool = False) -> dict:
         }
     dialogs = [] if light else _prepare_dialog_cache()
     stats = _dialog_stats(dialogs if dialogs else None)
+    regex_rules = sorted(smembers("regex_rules"))
+    rule_policies = {
+        rule: policy
+        for rule in regex_rules
+        if (policy := get_rule_policy(rule))
+    }
     data = {
         "app_version": APP_VERSION,
         "tg_logged_in": get("tg_logged_in", "0") == "1",
@@ -357,7 +371,8 @@ def _state_payload(light: bool = False) -> dict:
         "monitor_chats": sorted(smembers("monitor_chats")),
         "exclude_chats": sorted(smembers("exclude_chats")),
         "exclude_texts": sorted(smembers("exclude_texts")),
-        "regex_rules": sorted(smembers("regex_rules")),
+        "regex_rules": regex_rules,
+        "rule_policies": rule_policies,
         "disabled_regex_rules": sorted(smembers("regex_rules_disabled")),
         "code_rules": code_rule_diagnostics(),
         "events": list_events(30),
@@ -381,6 +396,12 @@ def _state_payload(light: bool = False) -> dict:
 
 def _page_data() -> dict:
     dialogs = _prepare_dialog_cache()
+    regex_rules = sorted(smembers("regex_rules"))
+    rule_policies = {
+        rule: policy
+        for rule in regex_rules
+        if (policy := get_rule_policy(rule))
+    }
     return {
         "app_version": APP_VERSION,
         "tg_api_id": get("tg_api_id", "") or "",
@@ -396,7 +417,8 @@ def _page_data() -> dict:
         "dialog_stats": _dialog_stats(dialogs),
         "exclude_chats": sorted(smembers("exclude_chats")),
         "exclude_texts": sorted(smembers("exclude_texts")),
-        "regex_rules": sorted(smembers("regex_rules")),
+        "regex_rules": regex_rules,
+        "rule_policies": rule_policies,
         "disabled_regex_rules": sorted(smembers("regex_rules_disabled")),
         "code_rules": code_rule_diagnostics(),
         "dedup_enabled": get("dedup_enabled", "1") == "1",
@@ -904,11 +926,63 @@ def add_regex():
     return _add_set("regex_rules", "value", "正则规则已添加")
 
 
+@app.post("/rule_generate")
+def rule_generate_route():
+    gate = require_login()
+    if gate:
+        return gate
+    rule_type = request.form.get("rule_type", "").strip()
+    sample = request.form.get("sample", "")
+    try:
+        result = generate_rule(rule_type, sample)
+        compiled = _regex.compile(result["pattern"], _regex.I | _regex.M)
+        if not compiled.search(sample, timeout=0.05):
+            return done("生成的规则没有命中原消息，请检查类型或样例", "error", ok=False)
+        result["matched"] = True
+        return done(
+            "规则已生成，请确认后添加",
+            "success",
+            rule_generate_result=result,
+        )
+    except Exception as e:
+        return done(f"规则生成失败：{e}", "error", ok=False)
+
+
+@app.post("/add_generated_rule")
+def add_generated_rule_route():
+    gate = require_login()
+    if gate:
+        return gate
+    pattern = request.form.get("pattern", "").strip()
+    rule_type = request.form.get("rule_type", "").strip()
+    if not pattern:
+        return done("生成规则不能为空", "error", ok=False)
+    if len(pattern) > 8192:
+        return done("生成规则过长", "error", ok=False)
+    try:
+        _regex.compile(pattern, _regex.I | _regex.M)
+        policy = default_policy(rule_type)
+    except Exception as e:
+        return done(f"规则无效：{e}", "error", ok=False)
+    sadd("regex_rules", pattern)
+    try:
+        save_rule_policy(pattern, rule_type)
+    except Exception:
+        srem("regex_rules", pattern)
+        raise
+    invalidate_rule_cache()
+    push_event("success", f"已添加{policy.get('label') or rule_type}规则")
+    return done("规则已添加并绑定去重策略", "success")
+
+
 @app.post("/del_regex")
 def del_regex():
     gate = require_login()
     if gate:
         return gate
+    value = request.form.get("value", "").strip()
+    if value:
+        delete_rule_policy(value)
     return _del_set("regex_rules")
 
 
@@ -1078,7 +1152,8 @@ def regex_test():
             text = text[:8192]
         analysis = analyze_message(text)
         code_detail = analysis.get("code_detail") or {}
-        profile = build_profile(text, "")
+        rule_policy = analysis.get("rule_policy") or {}
+        profile = build_profile(text, "", policy=rule_policy)
         ttl = ttl_minutes_for_profile(profile, None)
         diagnostics = rule_diagnostics()
         invalid = [x for x in diagnostics if not x.get("ok")]
@@ -1107,6 +1182,8 @@ def regex_test():
             "weak_code_identity": profile.get("weak_code_identity", ""),
             "content_url_identity": profile.get("content_url_identity", ""),
             "dedup_strategy": profile.get("dedup_strategy", ""),
+            "rule_type": analysis.get("rule_type", ""),
+            "rule_policy": rule_policy,
             "ttl_policy": profile.get("ttl_policy", ""),
             "lottery_identity": profile.get("lottery_identity", ""),
             "lottery_mode": profile.get("lottery_mode", ""),
@@ -1248,6 +1325,11 @@ def export_config():
         "exclude_texts": sorted(smembers("exclude_texts")),
         "regex_rules": sorted(smembers("regex_rules")),
         "disabled_regex_rules": sorted(smembers("regex_rules_disabled")),
+        "rule_policies": [
+            {"rule": rule, **(get_rule_policy(rule) or {})}
+            for rule in sorted(smembers("regex_rules"))
+            if get_rule_policy(rule)
+        ],
         "code_rules": get_code_rules(),
         "code_rules_source": "plugin" if active_plugin_id() else "pure",
         "code_rules_plugin": get_code_rules_for_source("plugin"),
@@ -1333,6 +1415,7 @@ def import_config():
                 snap[key] = ("set", list(smembers(key)))
             for key in ("code_rules", "code_rules_pure"):
                 snap[key] = ("json", get_json(key, None))
+            snap["rule_policies"] = ("hash", r.hgetall(RULE_POLICY_KEY) or {})
             return snap
 
         def _restore_snapshot(snap: dict) -> None:
@@ -1352,6 +1435,10 @@ def import_config():
                         delete(key)
                     else:
                         set_json(key, old)
+                elif kind == "hash":
+                    delete(key)
+                    if old:
+                        r.hset(key, mapping=old)
 
         snapshot = _take_snapshot()
         imported = []
@@ -1390,6 +1477,20 @@ def import_config():
                 imported.append(label)
                 if redis_key in {"exclude_texts", "regex_rules", "regex_rules_disabled"}:
                     matcher_rules_changed = True
+        policy_items = payload.get("rule_policies")
+        if isinstance(policy_items, list):
+            if mode in {"overwrite", "rules_only"}:
+                delete(RULE_POLICY_KEY)
+            for item in policy_items:
+                if not isinstance(item, dict):
+                    continue
+                policy = dict(item)
+                rule = str(policy.pop("rule", "") or "")
+                rule_type = str(policy.get("rule_type") or "")
+                if rule and rule_type:
+                    save_rule_policy(rule, rule_type, overrides=policy)
+            if policy_items:
+                imported.append("规则去重策略")
         if mode != "rules_only":
             imported_rule_labels = []
             if isinstance(payload.get("code_rules_plugin"), list):

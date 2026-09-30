@@ -41,7 +41,7 @@ class StabilityFixesV13861Tests(unittest.TestCase):
         bot_runner = read(APP / "bot_runner.py")
         self.assertIn('pipe.get("dedup_code_minutes")', bot_runner)
         self.assertIn("enabled, mode, other_minutes, code_minutes", bot_runner)
-        self.assertIn("code_ttl = max(60, code_minutes * 60)", bot_runner)
+        self.assertIn("code_ttl = max(60, effective_code_minutes * 60)", bot_runner)
 
     def test_admin_changes_clear_listener_runtime_cache_immediately(self):
         web = read(APP / "web.py")
