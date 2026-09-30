@@ -429,6 +429,35 @@ body.dark button.secondary:hover { background: #1d2a3c; }
   font-weight: 800;
 }
 
+.rule-policy-badge.legacy {
+  background: #fff7e6;
+  color: #ad6800;
+}
+
+.rule-policy-editor {
+  margin-top: 8px;
+}
+
+.rule-policy-editor summary {
+  cursor: pointer;
+  color: #666;
+  font-size: 12px;
+}
+
+.rule-policy-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin-top: 8px;
+}
+
+.rule-policy-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
 body.dark .generated-rule-box {
   background: #10141b;
   border-color: #2a303a;
@@ -437,6 +466,11 @@ body.dark .generated-rule-box {
 body.dark .rule-policy-badge {
   background: #102b4a;
   color: #8ec5ff;
+}
+
+body.dark .rule-policy-badge.legacy {
+  background: #3a2a0f;
+  color: #ffd591;
 }
 body.dark .monitor-summary-bar { background: #10141b; border-color: #2a303a; }
 body.dark .monitor-summary-bar span { background: #202631; }

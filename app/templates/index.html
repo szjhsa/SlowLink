@@ -622,10 +622,16 @@ function renderRegexList(items, disabled, policies){
   if(!items || items.length === 0){ box.innerHTML = '<div class="empty">暂无正则规则</div>'; return; }
   const off = new Set(disabled || []);
   const policyMap = policies || {};
+  const ttlOptions = [['0','不去重'],['5','5分钟'],['10','10分钟'],['15','15分钟'],['20','20分钟'],['30','30分钟'],['60','1小时'],['180','3小时'],['360','6小时'],['720','12小时'],['1440','1天'],['4320','3天'],['10080','7天'],['20160','14天']];
+  const typeOptions = [['code','码子'],['lottery','抽奖'],['keyword','关键词'],['exclude','排除']];
   box.innerHTML = items.map(item => {
     const policy = policyMap[item];
-    const badge = policy ? `<span class="rule-policy-badge">${esc(policy.label || policy.rule_type || '已绑定')} · ${esc(policy.ttl_minutes ?? 0)} 分钟</span> ` : '';
-    return `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${badge}${esc(item)}</span><div class="regex-actions"><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div></div>`;
+    const currentType = policy ? String(policy.rule_type || '') : '';
+    const currentTtl = String(policy ? (policy.ttl_minutes ?? 20) : 20);
+    const badge = policy ? `<span class="rule-policy-badge">${esc(policy.label || policy.rule_type || '已绑定')} · ${esc(policy.ttl_minutes ?? 0)} 分钟</span> ` : '<span class="rule-policy-badge legacy">兼容模式</span> ';
+    const typeSelect = (!currentType ? '<option value="" selected disabled>请选择类型</option>' : '') + typeOptions.map(([value,label]) => `<option value="${value}" ${currentType===value?'selected':''}>${label}</option>`).join('');
+    const ttlSelect = ttlOptions.map(([value,label]) => `<option value="${value}" ${currentTtl===value?'selected':''}>${label}</option>`).join('');
+    return `<div class="item"><span>${off.has(item)?'<span class="state-tag excluded">停用</span> ':''}${badge}${esc(item)}</span><div class="regex-actions"><form action="/toggle_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="secondary small">${off.has(item)?'启用':'停用'}</button></form><form action="/del_regex" method="post" data-ajax="1"><input type="hidden" name="value" value="${esc(item)}"><button class="danger small">删除</button></form></div><details class="rule-policy-editor"><summary>修改策略</summary><form action="/update_rule_policy" method="post" data-ajax="1" class="rule-policy-form"><input type="hidden" name="rule" value="${esc(item)}"><label>规则类型<select name="rule_type">${typeSelect}</select></label><label>去重时间<select name="ttl_minutes">${ttlSelect}</select></label><button class="small">保存策略</button></form></details></div>`;
   }).join('');
 }
 function renderCodeRules(items){

@@ -975,6 +975,37 @@ def add_generated_rule_route():
     return done("规则已添加并绑定去重策略", "success")
 
 
+@app.post("/update_rule_policy")
+def update_rule_policy_route():
+    gate = require_login()
+    if gate:
+        return gate
+    rule = request.form.get("rule", "")
+    rule_type = request.form.get("rule_type", "").strip()
+    value = request.form.get("ttl_minutes", "20").strip()
+    allowed = {"0", "5", "10", "15", "20", "30", "60", "180", "360", "720", "1440", "4320", "10080", "20160"}
+    if not rule or rule not in smembers("regex_rules"):
+        return done("规则不存在，请刷新页面后重试", "error", ok=False)
+    if value not in allowed:
+        value = "20"
+    try:
+        policy = default_policy(rule_type)
+        ttl_minutes = int(value)
+        save_rule_policy(
+            rule,
+            rule_type,
+            overrides={"ttl_minutes": ttl_minutes},
+        )
+    except Exception as e:
+        return done(f"保存策略失败：{e}", "error", ok=False)
+    invalidate_rule_cache()
+    push_event(
+        "success",
+        f"规则策略已更新：{policy.get('label') or rule_type} / {ttl_minutes} 分钟",
+    )
+    return done("规则策略已更新", "success")
+
+
 @app.post("/del_regex")
 def del_regex():
     gate = require_login()

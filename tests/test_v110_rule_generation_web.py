@@ -37,6 +37,17 @@ class RuleGenerationWebV110Tests(unittest.TestCase):
         self.assertIn("renderRegexList(data.regex_rules || [], data.disabled_regex_rules || [], data.rule_policies || {})", template)
         self.assertIn("rule-policy-badge", template)
 
+    def test_rule_policy_can_be_modified_from_rule_list(self):
+        source = read(APP / "web.py")
+        template = read(APP / "templates" / "index.html")
+
+        self.assertIn('@app.post("/update_rule_policy")', source)
+        self.assertIn('overrides={"ttl_minutes": ttl_minutes},', source)
+        self.assertIn('action="/update_rule_policy"', template)
+        self.assertIn("修改策略", template)
+        self.assertIn('name="rule_type"', template)
+        self.assertIn('name="ttl_minutes"', template)
+
 
 if __name__ == "__main__":
     unittest.main()
