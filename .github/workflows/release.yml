@@ -53,10 +53,21 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           file_version="${version//./_}"
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/slowlink_app_v${file_version}.zip" \
-            "dist/slowlink_v${file_version}_full.zip" \
-            dist/SHA256SUMS.txt \
-            --verify-tag \
-            --title "SlowLink $GITHUB_REF_NAME" \
-            --notes-file "dist/slowlink_v${file_version}_update_log.txt"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "dist/slowlink_app_v${file_version}.zip" \
+              "dist/slowlink_v${file_version}_full.zip" \
+              dist/SHA256SUMS.txt \
+              --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "SlowLink $GITHUB_REF_NAME" \
+              --notes-file "dist/slowlink_v${file_version}_update_log.txt"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "dist/slowlink_app_v${file_version}.zip" \
+              "dist/slowlink_v${file_version}_full.zip" \
+              dist/SHA256SUMS.txt \
+              --verify-tag \
+              --title "SlowLink $GITHUB_REF_NAME" \
+              --notes-file "dist/slowlink_v${file_version}_update_log.txt"
+          fi
