@@ -3,7 +3,7 @@ import json
 import time
 from typing import Any
 
-from rule_types import is_type_available
+from rule_types import get_rule_type_config, is_type_available
 
 
 RULE_POLICY_KEY = "rule_policies"
@@ -37,6 +37,27 @@ RULE_TYPE_DEFAULTS: dict[str, dict[str, Any]] = {
         "ttl_minutes": 0,
         "lottery_template_mode": "off",
         "forward": False,
+    },
+}
+
+STRATEGY_POLICY_DEFAULTS: dict[str, dict[str, Any]] = {
+    "code": {
+        "dedup_strategy": "code_identity",
+        "ttl_minutes": 20,
+        "lottery_template_mode": "off",
+        "forward": True,
+    },
+    "lottery": {
+        "dedup_strategy": "lottery_identity",
+        "ttl_minutes": 720,
+        "lottery_template_mode": "global",
+        "forward": True,
+    },
+    "line": {
+        "dedup_strategy": "normalized_text",
+        "ttl_minutes": 20,
+        "lottery_template_mode": "off",
+        "forward": True,
     },
 }
 
@@ -75,7 +96,13 @@ def default_policy(rule_type: str, *, require_available: bool = True) -> dict[st
         raise ValueError("当前插件未提供该规则类型")
     base = RULE_TYPE_DEFAULTS.get(key)
     if not base:
-        raise ValueError("未知规则类型")
+        config = get_rule_type_config(key)
+        strategy = str(config.get("strategy") or "").strip().lower()
+        strategy_defaults = STRATEGY_POLICY_DEFAULTS.get(strategy)
+        if not strategy_defaults:
+            raise ValueError("未知规则类型")
+        base = dict(strategy_defaults)
+        base["label"] = str(config.get("label") or key)
     merged = dict(base)
     merged.update(_plugin_defaults(key))
     merged["rule_type"] = key
@@ -103,7 +130,11 @@ def normalize_policy(value: dict[str, Any] | None, rule_type: str = "") -> dict[
         return {}
     base.update(raw)
     base["rule_type"] = selected_type
-    base["label"] = str(base.get("label") or RULE_TYPE_DEFAULTS[selected_type]["label"])
+    base["label"] = str(
+        base.get("label")
+        or RULE_TYPE_DEFAULTS.get(selected_type, {}).get("label")
+        or selected_type
+    )
     base["dedup_strategy"] = str(base.get("dedup_strategy") or "")
     mode = str(base.get("lottery_template_mode") or "off")
     base["lottery_template_mode"] = mode if mode in {"global", "id", "off"} else "off"

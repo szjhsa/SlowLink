@@ -96,6 +96,58 @@ class RulePluginHardeningV120Tests(unittest.TestCase):
         self.assertTrue(profile["identity_fallback"])
         self.assertTrue(profile["dedup_id"].startswith("code-fallback:"))
 
+    def test_plugin_can_define_new_rule_policy_type(self):
+        sys.path.insert(0, str(APP))
+        try:
+            import plugin_registry
+            import rule_policy
+            import rule_types
+
+            custom_type = {
+                "id": "custom_notice",
+                "label": "自定义公告",
+                "strategy": "line",
+                "aliases": ["自定义公告"],
+            }
+            old_available = rule_types.available_rule_types
+            old_get = rule_types.get_rule_type_config
+            old_section = plugin_registry.builtin_section
+            rule_types.clear_cache()
+            rule_types.available_rule_types = lambda: [custom_type]
+            rule_types.get_rule_type_config = lambda value: (
+                custom_type if value in {"custom_notice", "自定义公告"} else (_ for _ in ()).throw(ValueError())
+            )
+            plugin_registry.builtin_section = lambda section, default=None: (
+                {
+                    "custom_notice": {
+                        "label": "自定义公告",
+                        "dedup_strategy": "normalized_text",
+                        "ttl_minutes": 120,
+                        "lottery_template_mode": "off",
+                        "forward": True,
+                    }
+                }
+                if section == "rule_types"
+                else (default if default is not None else {})
+            )
+            policy = rule_policy.default_policy("custom_notice")
+
+            self.assertEqual(policy["rule_type"], "custom_notice")
+            self.assertEqual(policy["dedup_strategy"], "normalized_text")
+            self.assertEqual(policy["ttl_minutes"], 120)
+        finally:
+            try:
+                rule_types.available_rule_types = old_available
+                rule_types.get_rule_type_config = old_get
+                plugin_registry.builtin_section = old_section
+                rule_types.clear_cache()
+            except UnboundLocalError:
+                pass
+            try:
+                sys.path.remove(str(APP))
+            except ValueError:
+                pass
+
     def test_normalize_for_text_dedup_has_bounded_regex_runtime(self):
         child = textwrap.dedent(
             f"""
