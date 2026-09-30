@@ -32,6 +32,7 @@ FORBIDDEN_PARTS = {
     "dist",
     "plugins",
     "sessions",
+    "superpowers",
 }
 FORBIDDEN_SUFFIXES = {
     ".db",

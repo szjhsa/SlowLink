@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,20 @@ class RulePolicyBackupV110Tests(unittest.TestCase):
 
         self.assertIn('rule_policy = analysis.get("rule_policy") or {}', source)
         self.assertIn('profile = build_profile(text, "", policy=rule_policy)', source)
+
+    def test_release_builder_excludes_internal_planning_notes(self):
+        root = ROOT
+        spec = importlib.util.spec_from_file_location(
+            "build_release_v110",
+            root / "scripts" / "build_release.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec is not None and spec.loader is not None
+        spec.loader.exec_module(module)
+
+        self.assertTrue(
+            module._is_forbidden(Path("docs/superpowers/plans/example.md"))
+        )
 
 
 if __name__ == "__main__":
