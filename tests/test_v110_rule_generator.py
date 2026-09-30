@@ -59,6 +59,7 @@ class RuleGeneratorV110Tests(unittest.TestCase):
         self.assertEqual(result["rule_type"], "code")
         self.assertIsNotNone(re.search(result["pattern"], "CKWIS3PD97M3F6"))
         self.assertIsNotNone(re.search(result["pattern"], "CK7F2Q9LMN4P1X"))
+        self.assertIsNotNone(re.search(result["pattern"], "CK中文*AB猜码12345"))
         self.assertIsNone(re.search(result["pattern"], "XXWIS3PD97M3F6"))
 
     def test_keyword_message_generates_escaped_keyword_rule(self):

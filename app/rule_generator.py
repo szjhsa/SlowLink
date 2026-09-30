@@ -106,6 +106,24 @@ def _matching_existing_regex_pattern(sample: str) -> str:
         return ""
 
 
+def _flexible_pattern_from_existing_rule(rule: str) -> str:
+    match = _regex.fullmatch(
+        r"^(?:\\b)?([A-Za-z]{2,16})\[[^\]]+\]\{(\d+)\}(?:\\b)?$",
+        str(rule or "").strip(),
+    )
+    if not match:
+        return ""
+    prefix, length = match.groups()
+    return (
+        r"(?<![A-Za-z0-9])"
+        + re.escape(prefix)
+        + r"[^\s]{"
+        + str(int(length))
+        + r"}"
+        + r"(?![A-Za-z0-9])"
+    )
+
+
 def _code_pattern(sample: str) -> tuple[str, str]:
     try:
         from code_rules import extract_code_detail
@@ -122,6 +140,9 @@ def _code_pattern(sample: str) -> tuple[str, str]:
 
     existing_rule_pattern = _matching_existing_regex_pattern(sample)
     if existing_rule_pattern:
+        flexible_pattern = _flexible_pattern_from_existing_rule(existing_rule_pattern)
+        if flexible_pattern:
+            return flexible_pattern, "使用已有规则的固定前缀，后续位置允许中文、星号和符号"
         return existing_rule_pattern, "使用已有规则中的码格式生成通用匹配"
 
     try:
@@ -139,27 +160,19 @@ def _code_pattern(sample: str) -> tuple[str, str]:
         for candidate in BARE_CODE_RE.findall(sample):
             if len(candidate) < 8 or not any(ch.isdigit() for ch in candidate):
                 continue
-            prefix_match = re.match(r"([A-Za-z]{2,8})([A-Za-z0-9]+)$", candidate)
-            if not prefix_match:
+            prefix = candidate[:2]
+            tail_length = len(candidate) - len(prefix)
+            if tail_length < 4:
                 continue
-            prefix, tail = prefix_match.groups()
-            if len(tail) < 4:
-                continue
-            if all(ch.isupper() or ch.isdigit() for ch in tail):
-                tail_class = "[A-Z0-9]"
-            elif all(ch.islower() or ch.isdigit() for ch in tail):
-                tail_class = "[a-z0-9]"
-            else:
-                tail_class = "[A-Za-z0-9]"
             return (
                 r"(?<![A-Za-z0-9])"
                 + re.escape(prefix)
-                + tail_class
+                + r"[^\s]"
                 + "{"
-                + str(len(tail))
+                + str(tail_length)
                 + r"}"
                 + r"(?![A-Za-z0-9])",
-                "根据固定前缀和后续随机段生成通用码规则",
+                "根据固定前缀和后续随机段生成通用码规则，后续允许中文和符号",
             )
         raise ValueError("没有识别到完整码，请检查这条消息")
 
