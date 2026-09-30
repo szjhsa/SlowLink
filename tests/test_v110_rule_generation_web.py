@@ -27,6 +27,8 @@ class RuleGenerationWebV110Tests(unittest.TestCase):
         self.assertIn("按原消息生成规则", template)
         self.assertIn("先选择规则类型，再粘贴原消息", template)
         self.assertIn('<select name="rule_type">', template)
+        self.assertIn("{% for t in rule_generator_types %}", template)
+        self.assertIn('value="{{ t.id }}"', template)
         self.assertIn('<textarea name="sample"', template)
         self.assertIn('data-result="rule_generate"', template)
         self.assertIn("renderRuleGenerateResult", template)
@@ -47,6 +49,15 @@ class RuleGenerationWebV110Tests(unittest.TestCase):
         self.assertIn("修改策略", template)
         self.assertIn('name="rule_type"', template)
         self.assertIn('name="ttl_minutes"', template)
+
+    def test_web_and_editor_use_plugin_generator_types(self):
+        source = read(APP / "web.py")
+        template = read(APP / "templates" / "index.html")
+
+        self.assertIn('"rule_generator_types": available_rule_types()', source)
+        self.assertIn("available_rule_types()", source)
+        self.assertIn("const RULE_TYPE_OPTIONS = {{ rule_generator_types|tojson }};", template)
+        self.assertIn("RULE_TYPE_OPTIONS.map", template)
 
 
 if __name__ == "__main__":

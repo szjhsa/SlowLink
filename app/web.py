@@ -22,7 +22,7 @@ from bot_runner import manager
 from config import APP_VERSION
 from dialog_guard import should_keep_existing_dialog_cache
 from matcher import analyze_message, rule_diagnostics, invalidate_rule_cache
-from rule_generator import generate_rule
+from rule_generator import available_rule_types, generate_rule
 from rule_policy import (
     RULE_POLICY_KEY,
     default_policy,
@@ -388,6 +388,7 @@ def _state_payload(light: bool = False) -> dict:
         "active_plugin": active_plugin_id(),
         "plugins": list_plugins(),
         "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
+        "rule_generator_types": available_rule_types(),
     }
     if not light:
         data["dialog_cache"] = dialogs
@@ -446,6 +447,7 @@ def _page_data() -> dict:
         "active_plugin": active_plugin_id(),
         "plugins": list_plugins(),
         "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
+        "rule_generator_types": available_rule_types(),
     }
 
 
@@ -959,6 +961,9 @@ def add_generated_rule_route():
         return done("生成规则不能为空", "error", ok=False)
     if len(pattern) > 8192:
         return done("生成规则过长", "error", ok=False)
+    available_ids = {item["id"] for item in available_rule_types()}
+    if rule_type not in available_ids:
+        return done("当前插件未提供该规则类型", "error", ok=False)
     try:
         _regex.compile(pattern, _regex.I | _regex.M)
         policy = default_policy(rule_type)
@@ -988,6 +993,9 @@ def update_rule_policy_route():
         return done("规则不存在，请刷新页面后重试", "error", ok=False)
     if value not in allowed:
         value = "20"
+    available_ids = {item["id"] for item in available_rule_types()}
+    if rule_type not in available_ids:
+        return done("当前插件未提供该规则类型", "error", ok=False)
     try:
         policy = default_policy(rule_type)
         ttl_minutes = int(value)

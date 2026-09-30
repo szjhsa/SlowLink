@@ -14,6 +14,37 @@ import rule_generator
 
 
 class RuleGeneratorV110Tests(unittest.TestCase):
+    def test_builtin_plugin_exposes_code_lottery_and_exclude_types(self):
+        old = os.environ.get("SLOWLINK_ACTIVE_PLUGIN")
+        os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "builtin"
+        try:
+            ids = [item["id"] for item in rule_generator.available_rule_types()]
+        finally:
+            if old is None:
+                os.environ.pop("SLOWLINK_ACTIVE_PLUGIN", None)
+            else:
+                os.environ["SLOWLINK_ACTIVE_PLUGIN"] = old
+
+        self.assertEqual(ids[0], "keyword")
+        self.assertIn("code", ids)
+        self.assertIn("lottery", ids)
+        self.assertIn("exclude", ids)
+
+    def test_pure_mode_exposes_only_keyword_generator(self):
+        old = os.environ.get("SLOWLINK_ACTIVE_PLUGIN")
+        os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "off"
+        try:
+            ids = [item["id"] for item in rule_generator.available_rule_types()]
+            with self.assertRaises(ValueError):
+                rule_generator.generate_rule("码子", "CKWIS3PD97M3F6")
+        finally:
+            if old is None:
+                os.environ.pop("SLOWLINK_ACTIVE_PLUGIN", None)
+            else:
+                os.environ["SLOWLINK_ACTIVE_PLUGIN"] = old
+
+        self.assertEqual(ids, ["keyword"])
+
     def test_register_code_generates_reusable_code_rule(self):
         sample = "Wlao-30-Register_Ab12Cd34Ef"
 

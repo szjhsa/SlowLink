@@ -64,6 +64,7 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
             "{{ exclude_chats|tojson }}": "[]",
             "{{ regex_rules|tojson }}": "[]",
             "{{ code_rules|tojson }}": "[]",
+            "{{ rule_generator_types|tojson }}": "[]",
             "{{ csrf_token() }}": "test-csrf-token",
         }
         for old, new in replacements.items():

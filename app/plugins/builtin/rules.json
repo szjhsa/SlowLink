@@ -246,6 +246,25 @@
       "forward": false
     }
   },
+  "rule_generator": {
+    "types": {
+      "code": {
+        "label": "码子",
+        "strategy": "code",
+        "aliases": ["码子", "马子", "注册码"]
+      },
+      "lottery": {
+        "label": "抽奖",
+        "strategy": "lottery",
+        "aliases": ["抽奖", "刮刮乐"]
+      },
+      "exclude": {
+        "label": "排除",
+        "strategy": "line",
+        "aliases": ["排除", "排除文本"]
+      }
+    }
+  },
   "flow": {
     "priority_keywords": [
       "register",

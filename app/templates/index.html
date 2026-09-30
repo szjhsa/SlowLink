@@ -189,10 +189,9 @@
           <form action="/rule_generate" method="post" class="stack" data-ajax="1" data-result="rule_generate">
             <label>规则类型
               <select name="rule_type">
-                <option value="code">码子</option>
-                <option value="lottery">抽奖</option>
-                <option value="keyword">关键词</option>
-                <option value="exclude">排除</option>
+                {% for t in rule_generator_types %}
+                <option value="{{ t.id }}">{{ t.label }}</option>
+                {% endfor %}
               </select>
             </label>
             <textarea name="sample" rows="5" placeholder="把原消息粘贴到这里"></textarea>
@@ -409,6 +408,7 @@ let stateAbort = null;
 let stateRequestSeq = 0;
 const POLL_INTERVAL_MS = 5000;
 const CSRF_TOKEN = "{{ csrf_token() }}";
+const RULE_TYPE_OPTIONS = {{ rule_generator_types|tojson }};
 
 function isPageHidden(){
   return document.hidden || document.visibilityState === 'hidden';
@@ -623,7 +623,7 @@ function renderRegexList(items, disabled, policies){
   const off = new Set(disabled || []);
   const policyMap = policies || {};
   const ttlOptions = [['0','不去重'],['5','5分钟'],['10','10分钟'],['15','15分钟'],['20','20分钟'],['30','30分钟'],['60','1小时'],['180','3小时'],['360','6小时'],['720','12小时'],['1440','1天'],['4320','3天'],['10080','7天'],['20160','14天']];
-  const typeOptions = [['code','码子'],['lottery','抽奖'],['keyword','关键词'],['exclude','排除']];
+  const typeOptions = RULE_TYPE_OPTIONS.map(item => [item.id, item.label]);
   box.innerHTML = items.map(item => {
     const policy = policyMap[item];
     const currentType = policy ? String(policy.rule_type || '') : '';
