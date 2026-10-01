@@ -133,7 +133,7 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
 
         self.assertIsNone(plugin_match(text))
 
-    def test_group_instruction_with_scratch_keyword_does_not_auto_trigger(self):
+    def test_business_instruction_text_does_not_auto_trigger(self):
         group_instruction = (
             "🎮 本群玩法(在群里直接发口令即可)\n\n"
             "🎫 刮刮乐 —— 来张彩票\n"
@@ -145,9 +145,45 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
             group_instruction,
             "刮刮乐必中体验卡",
             "我是刮刮乐这个",
+            "🎉 本群会在每天20点开放注册，具体规则见公告",
+            "🃏当前开注状态：True 表示已开放，False 表示已关闭",
+            "📝 开放注册中 这几个字是机器人发送的公告标题",
+            "本群玩法里的“抽奖信息”是活动卡片提示，不是具体抽奖",
+            "当机器人发送「🎁 抽奖开始啦」时，表示抽奖正式开始",
+            "群规示例：🍀 祝所有参与者好运！这句话只是祝福语",
+            "机器人会在发起了通用抽奖活动后推送卡片",
+            "教程：新的抽奖已经创建后会显示参与按钮",
+            "教程：🎉 抽奖活动已开始! 是活动卡片标题",
+            "功能介绍：机器人会回复“已为您生成了注册码”",
+            "教程：新的兑换码已生成后请及时领取",
+            "界面说明：出现 🎁 已生成 就代表操作完成",
+            "教程：为小虎揍们生成了注册码 是固定提示",
+            "群规关键词：虎揍快来",
+            "教程：\n虎揍快来",
+            "教程：\n📝 开放注册中",
         ):
             with self.subTest(text=text):
                 self.assertIsNone(plugin_match(text))
+
+    def test_exact_short_lines_still_auto_trigger(self):
+        for text in ("📝 开放注册中", "虎揍快来"):
+            with self.subTest(text=text):
+                result = plugin_match(text)
+                self.assertIsInstance(result, dict)
+                self.assertTrue(result.get("matched"))
+
+    def test_registration_event_with_context_still_matches(self):
+        text = (
+            "界面说明：开注状态 | True\n"
+            "🎫 总注册限制 | 500\n"
+            "🎭 剩余可注册 | 400"
+        )
+
+        result = plugin_match(text)
+
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result.get("matched"))
+        self.assertEqual(result.get("rule_type"), "keyword")
 
     def test_scratch_lottery_with_event_fields_still_matches(self):
         text = (

@@ -17,23 +17,23 @@ BUSINESS_MATCH_RULES = [
     {"name": "CK 完整码", "rule_type": "code", "requires_code": True, "pattern": r"(?<![A-Za-z0-9])CK[^\s]{12}(?=$|\s|[，。！？？；：、】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
     {"name": "网页 invite 码", "rule_type": "code", "requires_code": True, "pattern": r"(?i)https?://[^\s/]+/invite/(?:[a-z0-9]{6}|[a-z0-9]{8})(?![a-z0-9])"},
     {"name": "Register/Renew 完整码", "rule_type": "code", "requires_code": True, "pattern": r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[^\s*`]+$"},
-    {"name": "注册公告", "rule_type": "keyword", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
-    {"name": "开注状态", "rule_type": "keyword", "pattern": r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)(?:True|ON|开启|开放|1|已开启)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"},
-    {"name": "开放注册中", "rule_type": "keyword", "pattern": r"📝 开放注册中"},
-    {"name": "全局抽奖", "rule_type": "lottery", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
-    {"name": "刮刮乐活动", "rule_type": "lottery", "requires_lottery_context": True, "pattern": r"(?m)^[^\n]*刮刮乐[^\n]*$"},
-    {"name": "抽奖活动已开始", "rule_type": "lottery", "pattern": r"(?m)^抽奖活动已开始！?$"},
-    {"name": "抽奖开始啦", "rule_type": "lottery", "pattern": r"🎁 抽奖开始啦"},
-    {"name": "奖品内容行", "rule_type": "lottery", "pattern": r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"},
-    {"name": "通用抽奖活动", "rule_type": "lottery", "pattern": r"发起了通用抽奖活动"},
-    {"name": "祝参与者好运", "rule_type": "lottery", "pattern": r"🍀 祝所有参与者好运！"},
-    {"name": "新抽奖创建", "rule_type": "lottery", "pattern": r"新的抽奖已经创建[ \t\r\n\u200b\u200c\u200d\ufeff]*抽奖信息"},
-    {"name": "抽奖活动标记", "rule_type": "lottery", "pattern": r"🎉 抽奖活动已开始!"},
-    {"name": "生成码提示", "rule_type": "code", "pattern": r"已为您生成了"},
-    {"name": "新兑换码提示", "rule_type": "code", "pattern": r"新的兑换码已生成"},
-    {"name": "生成提示", "rule_type": "code", "pattern": r"🎁 已生成"},
-    {"name": "小虎揍生成提示", "rule_type": "code", "pattern": r"为小虎揍们生成了"},
-    {"name": "虎揍快来", "rule_type": "keyword", "pattern": r"虎揍快来"},
+    {"name": "注册公告", "rule_type": "keyword", "guard_topic": "registration", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
+    {"name": "开注状态", "rule_type": "keyword", "guard_topic": "registration", "pattern": r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)(?:True|ON|开启|开放|1|已开启)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"},
+    {"name": "开放注册中", "rule_type": "keyword", "guard_topic": "registration", "pattern": r"(?m)^[ \t]*📝\s*开放注册中[ \t]*$"},
+    {"name": "全局抽奖", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
+    {"name": "刮刮乐活动", "rule_type": "lottery", "guard_topic": "lottery", "requires_lottery_context": True, "pattern": r"(?m)^[^\n]*刮刮乐[^\n]*$"},
+    {"name": "抽奖活动已开始", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"(?m)^抽奖活动已开始！?$"},
+    {"name": "抽奖开始啦", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🎁 抽奖开始啦"},
+    {"name": "奖品内容行", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"},
+    {"name": "通用抽奖活动", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"发起了通用抽奖活动"},
+    {"name": "祝参与者好运", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🍀 祝所有参与者好运！"},
+    {"name": "新抽奖创建", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"新的抽奖已经创建[ \t\r\n\u200b\u200c\u200d\ufeff]*抽奖信息"},
+    {"name": "抽奖活动标记", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🎉 抽奖活动已开始!"},
+    {"name": "生成码提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"已为您生成了"},
+    {"name": "新兑换码提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"新的兑换码已生成"},
+    {"name": "生成提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"🎁 已生成"},
+    {"name": "小虎揍生成提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"为小虎揍们生成了"},
+    {"name": "虎揍快来", "rule_type": "keyword", "reject_in_instruction": True, "pattern": r"(?m)^[ \t]*虎揍快来[ \t]*$"},
 ]
 
 _BUSINESS_MATCH_CACHE = {"signature": None, "compiled": []}
@@ -48,6 +48,25 @@ LOTTERY_EVENT_CONTEXT_RE = _regex.compile(
     r"|随机种子(?:哈希)?\s*[:：|｜]"
     r"|抽奖条件\s*[:：|｜]"
     r"|(?:📣\s*)?发布群组\s*[:：|｜]"
+    r")",
+    _regex.I,
+)
+
+BUSINESS_INSTRUCTION_RE = _regex.compile(
+    r"(?:本群玩法|玩法说明|使用说明|操作说明|功能介绍|功能说明|规则说明|具体规则|"
+    r"群规|教程|示例|这几个字|这句话|字样|当机器人|"
+    r"机器人会[^\n]{0,20}(?:发送|回复|推送|显示)|界面说明|如果看到|"
+    r"看到[^\n]{0,40}(?:就|代表|表示|意味着)|"
+    r"表示(?:已)?(?:开放|关闭|开启|结束|开始|成功)|意思是|意味着)"
+)
+
+REGISTRATION_EVENT_CONTEXT_RE = _regex.compile(
+    r"(?m)^[ \t]*(?:"
+    r"(?:[🎫🎟️🎭🤖]\s*)?(?:总注册限制|注册限制|已注册人数|注册人数|"
+    r"剩余可注册(?:人数)?|剩余名额|bot使用人数)\s*[|｜:：]"
+    r"|(?:已开启|开启)\s*(?:自由|定时)注册"
+    r"|开放注册已开启"
+    r"|(?:私聊机器人\s*)?发送\s*/register\b"
     r")",
     _regex.I,
 )
@@ -461,6 +480,8 @@ def _compiled_business_match_rules():
             str(rule.get("pattern") or ""),
             str(rule.get("rule_type") or ""),
             bool(rule.get("requires_lottery_context")),
+            str(rule.get("guard_topic") or ""),
+            bool(rule.get("reject_in_instruction")),
         )
         for rule in BUSINESS_MATCH_RULES
     )
@@ -510,11 +531,20 @@ def match_plugin_event(payload):
             if match:
                 if rule.get("requires_code") and not str(detail.get("code") or ""):
                     continue
+                is_instruction = bool(BUSINESS_INSTRUCTION_RE.search(candidate))
+                if rule.get("reject_in_instruction") and is_instruction:
+                    continue
                 if (
                     rule.get("requires_lottery_context")
                     and not LOTTERY_EVENT_CONTEXT_RE.search(candidate)
                 ):
                     continue
+                if is_instruction:
+                    topic = str(rule.get("guard_topic") or "")
+                    if topic == "lottery" and not LOTTERY_EVENT_CONTEXT_RE.search(candidate):
+                        continue
+                    if topic == "registration" and not REGISTRATION_EVENT_CONTEXT_RE.search(candidate):
+                        continue
                 return {
                     "matched": True,
                     "rule": "plugin:" + str(rule.get("name") or "event"),
