@@ -180,6 +180,17 @@
       "alpn"
     ]
   },
+  "code_identity": {
+    "enabled": true,
+    "mask_char": "*",
+    "mask_mode": "any_length",
+    "mask_width": 1,
+    "min_fixed_chars": 6,
+    "ttl_minutes": 20,
+    "pending_seconds": 30,
+    "max_candidates": 300,
+    "scope_regex": "^(?P<scope>.+?-(?:Register|Renew)_)(?P<suffix>.+)$"
+  },
   "dedup": {
     "register_keywords": ["开放注册", "自由注册", "开放注册中", "注册开放", "开注", "开注中", "开放名额", "register", "renew"],
     "lottery_keywords": ["抽奖", "抽奖开始", "抽奖开始啦", "抽奖活动已开始", "刮刮乐", "奖品内容", "抽奖信息", "新的抽奖已经创建"],

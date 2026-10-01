@@ -241,6 +241,45 @@ def validate_rules_data(rules: dict) -> None:
             flags=_regex.I | _regex.M | _regex.S,
         )
 
+    code_identity = rules.get("code_identity")
+    if code_identity is not None:
+        if not isinstance(code_identity, dict):
+            raise ValueError("code_identity 必须是对象")
+        mask_char = code_identity.get("mask_char")
+        if mask_char is not None and (
+            not isinstance(mask_char, str) or len(mask_char) != 1
+        ):
+            raise ValueError("code_identity.mask_char 必须是单个字符")
+        mask_mode = str(code_identity.get("mask_mode") or "any_length")
+        if mask_mode not in {"exact", "any_length"}:
+            raise ValueError("code_identity.mask_mode 必须是 exact 或 any_length")
+        for key in (
+            "mask_width",
+            "min_fixed_chars",
+            "ttl_minutes",
+            "pending_seconds",
+            "max_candidates",
+        ):
+            if key in code_identity:
+                try:
+                    int(code_identity.get(key))
+                except Exception as exc:
+                    raise ValueError(f"code_identity.{key} 必须是整数") from exc
+        _validate_regex(
+            code_identity.get("scope_regex"),
+            "code_identity.scope_regex",
+            _regex_engine="re",
+            flags=0,
+        )
+        scope_regex = code_identity.get("scope_regex")
+        if scope_regex:
+            try:
+                groups = re.compile(str(scope_regex)).groupindex
+            except Exception as exc:
+                raise ValueError(f"code_identity.scope_regex 正则无效：{exc}") from exc
+            if not {"scope", "suffix"}.issubset(groups):
+                raise ValueError("code_identity.scope_regex 必须包含 scope 和 suffix 命名组")
+
     dedup = rules["dedup"]
     for key in ("lottery_id_pattern", "lottery_seed_pattern"):
         _validate_regex(dedup.get(key), f"dedup.{key}", _regex_engine="re", flags=re.I)
@@ -473,12 +512,14 @@ def reload_all() -> None:
     """Re-apply plugin data to core modules after activation changes."""
     from matcher import reload_builtins as reload_matcher_builtins
     from code_rules import reload_builtins as reload_code_builtins
+    from code_identity_plugin import clear_cache as clear_code_identity_cache
     from dedup import reload_builtins as reload_dedup_builtins
     from rule_policy import clear_cache as clear_rule_policy_cache
     from rule_types import clear_cache as clear_rule_types_cache
 
     reload_matcher_builtins()
     reload_code_builtins()
+    clear_code_identity_cache()
     reload_dedup_builtins()
     clear_rule_policy_cache()
     clear_rule_types_cache()

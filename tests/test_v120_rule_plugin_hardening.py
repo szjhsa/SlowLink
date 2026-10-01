@@ -66,6 +66,30 @@ class RulePluginHardeningV120Tests(unittest.TestCase):
             except ValueError:
                 pass
 
+    def test_code_identity_schema_requires_scope_and_suffix_groups(self):
+        sys.path.insert(0, str(APP))
+        try:
+            import plugin_registry
+
+            with self.assertRaises(ValueError):
+                plugin_registry.validate_rules_data({
+                    "matcher": {},
+                    "code_rules": {},
+                    "code_identity": {
+                        "enabled": True,
+                        "mask_char": "*",
+                        "mask_mode": "any_length",
+                        "scope_regex": "^(?P<wrong>.+)$",
+                    },
+                    "dedup": {},
+                    "flow": {},
+                })
+        finally:
+            try:
+                sys.path.remove(str(APP))
+            except ValueError:
+                pass
+
     def test_editor_preserves_unavailable_policy_type(self):
         template = (APP / "templates" / "index.html").read_text(encoding="utf-8-sig")
 
