@@ -244,6 +244,17 @@ def validate_rules_data(rules: dict) -> None:
     dedup = rules["dedup"]
     for key in ("lottery_id_pattern", "lottery_seed_pattern"):
         _validate_regex(dedup.get(key), f"dedup.{key}", _regex_engine="re", flags=re.I)
+    dynamic_patterns = dedup.get("dynamic_line_patterns")
+    if dynamic_patterns is not None:
+        if not isinstance(dynamic_patterns, list):
+            raise ValueError("dedup.dynamic_line_patterns 必须是数组")
+        for index, pattern in enumerate(dynamic_patterns):
+            _validate_regex(
+                pattern,
+                f"dedup.dynamic_line_patterns.{index}",
+                _regex_engine="re",
+                flags=0,
+            )
 
     rule_types = rules.get("rule_types")
     if rule_types is not None:

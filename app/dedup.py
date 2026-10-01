@@ -119,6 +119,7 @@ LOTTERY_SEED_RE = re.compile(
     re.I,
 )
 LOTTERY_TEMPLATE_WINDOW_SECONDS = 10 * 60
+DYNAMIC_LINE_RES: tuple[re.Pattern, ...] = ()
 TTL_DEFAULTS = {
     "register": 20,
     "invite": 0,
@@ -134,7 +135,7 @@ def reload_builtins():
     """Load built-in activity keywords and lottery markers from the plugin."""
     global REGISTER_KWS, LOTTERY_KWS, JOINT_LOTTERY_KWS, LONG_TERM_KWS, INVITE_KWS
     global LOTTERY_ID_RE, LOTTERY_SEED_RE, LOTTERY_SECTION_LABELS, SOURCE_LINE_HINTS
-    global TTL_DEFAULTS
+    global DYNAMIC_LINE_RES, TTL_DEFAULTS
 
     section = builtin_section("dedup", {}) or {}
     if not active_rules():
@@ -146,6 +147,7 @@ def reload_builtins():
         INVITE_KWS = []
         LOTTERY_ID_RE = never
         LOTTERY_SEED_RE = never
+        DYNAMIC_LINE_RES = ()
         LOTTERY_SECTION_LABELS = ()
         SOURCE_LINE_HINTS = []
         TTL_DEFAULTS = {"other": 20}
@@ -163,6 +165,12 @@ def reload_builtins():
     LOTTERY_SEED_RE = re.compile(
         section.get("lottery_seed_pattern") or r"(?!)",
         re.I,
+    )
+    dynamic_patterns = section.get("dynamic_line_patterns")
+    DYNAMIC_LINE_RES = tuple(
+        re.compile(str(pattern))
+        for pattern in (dynamic_patterns if isinstance(dynamic_patterns, list) else [])
+        if str(pattern).strip()
     )
     labels = section.get("lottery_section_labels")
     LOTTERY_SECTION_LABELS = tuple(labels if isinstance(labels, list) else [])
@@ -598,15 +606,9 @@ def normalize_for_text_dedup(text: str) -> str:
             continue
         if low.startswith("随机种子哈希:") or low.startswith("random seed:"):
             continue
-        if re.search(r"已参与[：:\s]*\d+人", line):
+        if any(pattern.search(line) for pattern in DYNAMIC_LINE_RES):
             continue
         if re.search(r"中奖概率[：:\s]*[\d.]+%?", line):
-            continue
-        if re.search(r"(?:当前)?参与人数[：:\s]*\d+", line):
-            continue
-        if re.search(r"(?:已参与|当前参与|参与人数)\s*[：:]?\s*\d+", line):
-            continue
-        if re.fullmatch(r"\d*\s*人已登记", line):
             continue
         if re.search(r"消耗\s+[\d.]+\s+碎片", line):
             continue

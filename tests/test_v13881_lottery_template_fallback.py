@@ -263,6 +263,19 @@ MVision 兑换码 × 10 份
         self.assertTrue(second_duplicate)
         self.assertIn("相同文本内容重复", reason)
 
+    def test_plugin_dynamic_count_patterns_cover_common_lottery_labels(self):
+        dedup, _client = load_dedup()
+        text = """🎉 抽奖活动
+🎁 奖品内容：测试奖品 ×1
+已报名：245人
+参与用户：246
+当前人数：247人
+"""
+        normalized = dedup.normalize_for_text_dedup(text)
+
+        for marker in ("已报名", "参与用户", "当前人数", "245", "246", "247"):
+            self.assertNotIn(marker, normalized)
+
 
 if __name__ == "__main__":
     unittest.main()
