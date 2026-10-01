@@ -43,6 +43,19 @@ def load_matcher():
 
 
 class MatcherRulePolicyV110Tests(unittest.TestCase):
+    def test_plugin_guard_hook_is_used_before_core_fallback(self):
+        matcher = load_matcher()
+        matcher.call_hook = lambda *args, **kwargs: {
+            "usage_notice": False,
+            "closed_register_notice": True,
+            "registration_success_notice": False,
+        }
+
+        analysis = matcher.analyze_message("注册状态：false")
+
+        self.assertFalse(analysis["matched"])
+        self.assertTrue(analysis["closed_register_notice"])
+
     def test_matching_rule_returns_its_policy(self):
         matcher = load_matcher()
         rule = r"(?m)^抽奖活动已开始！?$"

@@ -42,6 +42,7 @@ from code_rules import (
 )
 from plugin_registry import (
     active_plugin_id,
+    builtin_section,
     install_plugin,
     list_plugins,
     manifest as plugin_manifest,
@@ -342,6 +343,7 @@ def _daily_stats_safe() -> dict:
 
 
 def _state_payload(light: bool = False) -> dict:
+    plugin_ui = _plugin_ui()
     if light:
         return {
             "app_version": APP_VERSION,
@@ -351,6 +353,7 @@ def _state_payload(light: bool = False) -> dict:
             "target_chat": get("target_chat", "") or "",
             "public_link_domain": _public_link_domain(),
             "heartbeat": _heartbeat_payload(),
+            "plugin_ui": plugin_ui,
         }
     dialogs = [] if light else _prepare_dialog_cache()
     stats = _dialog_stats(dialogs if dialogs else None)
@@ -389,6 +392,7 @@ def _state_payload(light: bool = False) -> dict:
         "plugins": list_plugins(),
         "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
         "rule_generator_types": available_rule_types(),
+        "plugin_ui": plugin_ui,
     }
     if not light:
         data["dialog_cache"] = dialogs
@@ -403,6 +407,7 @@ def _page_data() -> dict:
         for rule in regex_rules
         if (policy := get_rule_policy(rule))
     }
+    plugin_ui = _plugin_ui()
     return {
         "app_version": APP_VERSION,
         "tg_api_id": get("tg_api_id", "") or "",
@@ -448,7 +453,52 @@ def _page_data() -> dict:
         "plugins": list_plugins(),
         "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
         "rule_generator_types": available_rule_types(),
+        "plugin_ui": plugin_ui,
+        "dedup_values": _dedup_values(plugin_ui),
     }
+
+
+def _plugin_ui() -> dict:
+    try:
+        value = builtin_section("ui", {}) or {}
+        return dict(value) if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _ui_field_defs(ui: dict) -> list[dict]:
+    fields: list[dict] = []
+    seen: set[str] = set()
+    for section_name in (
+        "dedup_simple_fields",
+        "dedup_advanced_fields",
+        "dedup_custom_fields",
+    ):
+        raw_fields = ui.get(section_name)
+        if not isinstance(raw_fields, list):
+            continue
+        for raw in raw_fields:
+            if not isinstance(raw, dict):
+                continue
+            key = str(raw.get("key") or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            fields.append(dict(raw))
+    return fields
+
+
+def _dedup_values(ui: dict | None = None) -> dict:
+    values: dict[str, str] = {}
+    for item in _ui_field_defs(ui or _plugin_ui()):
+        key = str(item.get("key") or "").strip()
+        default = str(item.get("default") or "0")
+        values[key] = str(get(key, default) or default)
+    values.setdefault(
+        "dedup_other_minutes",
+        str(get("dedup_other_minutes", "20") or "20"),
+    )
+    return values
 
 
 
@@ -1125,43 +1175,30 @@ def save_dedup():
     if mode not in {"strict", "balanced", "loose"}:
         mode = "strict"
     set_value("dedup_mode", mode)
-    if not active_plugin_id():
-        allowed = {"0", "5", "10", "15", "20", "30", "60", "180", "360", "720", "1440", "4320", "10080", "20160"}
-        other = request.form.get("dedup_other_minutes", "20")
-        if other not in allowed:
-            other = "20"
-        set_value("dedup_other_minutes", other)
-        set_value("dedup_minutes", other)
-        clear_ttl_cache()
-        try:
-            manager.clear_runtime_cache()
-        except Exception:
-            pass
-        return done("去重策略已保存", "success")
-    lottery_key_mode = request.form.get("dedup_lottery_key_mode", "id")
-    if lottery_key_mode not in {"id", "id_keyword", "id_prize_keyword"}:
-        lottery_key_mode = "id"
-    set_value("dedup_lottery_key_mode", lottery_key_mode)
-    lottery_template_mode = request.form.get("dedup_lottery_template_mode", "global")
-    if lottery_template_mode not in {"global", "id", "off"}:
-        lottery_template_mode = "global"
-    set_value("dedup_lottery_template_mode", lottery_template_mode)
     allowed = {"0", "5", "10", "15", "20", "30", "60", "180", "360", "720", "1440", "4320", "10080", "20160"}
-    fields = {
-        "dedup_register_minutes": "20",
-        "dedup_invite_minutes": "0",
-        "dedup_code_minutes": "20",
-        "dedup_lottery_minutes": "720",
-        "dedup_joint_lottery_minutes": "4320",
-        "dedup_long_term_minutes": "10080",
-        "dedup_other_minutes": "20",
-    }
-    for key, default in fields.items():
+    field_defs = _ui_field_defs(_plugin_ui())
+    if not field_defs:
+        field_defs = [{
+            "key": "dedup_other_minutes",
+            "default": "20",
+        }]
+    for item in field_defs:
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        default = str(item.get("default") or "20")
+        options = item.get("options")
+        allowed_values = (
+            {str(option.get("value")) for option in options if isinstance(option, dict)}
+            if isinstance(options, list)
+            else allowed
+        )
         value = request.form.get(key, default)
-        if value not in allowed:
+        if value not in allowed_values:
             value = default
         set_value(key, value)
-    set_value("dedup_minutes", request.form.get("dedup_other_minutes", "20") if request.form.get("dedup_other_minutes", "20") in allowed else "20")
+        if key == "dedup_other_minutes":
+            set_value("dedup_minutes", value)
     clear_ttl_cache()
     try:
         manager.clear_runtime_cache()

@@ -1,4 +1,5 @@
 import re
+import json
 import unittest
 from pathlib import Path
 
@@ -39,9 +40,18 @@ class CaseDedupPanelsAndTestAlignmentV13924Tests(unittest.TestCase):
     def test_exhausted_register_matches_without_separator(self):
         _code_rules, matcher = load_modules()
         normalized = "剩余可注册 0 人"
+        rules = json.loads(
+            (APP / "plugins" / "builtin" / "rules.json").read_text(
+                encoding="utf-8-sig"
+            )
+        )
+        exhausted = re.compile(
+            rules["matcher"]["exhausted_register_pattern"],
+            re.I,
+        )
 
         self.assertTrue(matcher._is_closed_register_notice(normalized, "剩余可注册0人"))
-        self.assertIsNotNone(matcher.EXHAUSTED_REGISTER_RE.search("剩余可注册 | 0"))
+        self.assertIsNotNone(exhausted.search("剩余可注册 | 0"))
 
     def test_open_registration_state_rule_migrates_and_supports_variants(self):
         redis_store = load_redis_store(FakeRedisClient(set()))

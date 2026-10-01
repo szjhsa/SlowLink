@@ -9,58 +9,6 @@ from rule_types import get_rule_type_config, is_type_available
 RULE_POLICY_KEY = "rule_policies"
 RULE_POLICY_CACHE_TTL = 60.0
 
-RULE_TYPE_DEFAULTS: dict[str, dict[str, Any]] = {
-    "code": {
-        "label": "码子",
-        "dedup_strategy": "code_identity",
-        "ttl_minutes": 20,
-        "lottery_template_mode": "off",
-        "forward": True,
-    },
-    "lottery": {
-        "label": "抽奖",
-        "dedup_strategy": "lottery_identity",
-        "ttl_minutes": 720,
-        "lottery_template_mode": "global",
-        "forward": True,
-    },
-    "keyword": {
-        "label": "关键词",
-        "dedup_strategy": "normalized_text",
-        "ttl_minutes": 20,
-        "lottery_template_mode": "off",
-        "forward": True,
-    },
-    "exclude": {
-        "label": "排除",
-        "dedup_strategy": "none",
-        "ttl_minutes": 0,
-        "lottery_template_mode": "off",
-        "forward": False,
-    },
-}
-
-STRATEGY_POLICY_DEFAULTS: dict[str, dict[str, Any]] = {
-    "code": {
-        "dedup_strategy": "code_identity",
-        "ttl_minutes": 20,
-        "lottery_template_mode": "off",
-        "forward": True,
-    },
-    "lottery": {
-        "dedup_strategy": "lottery_identity",
-        "ttl_minutes": 720,
-        "lottery_template_mode": "global",
-        "forward": True,
-    },
-    "line": {
-        "dedup_strategy": "normalized_text",
-        "ttl_minutes": 20,
-        "lottery_template_mode": "off",
-        "forward": True,
-    },
-}
-
 _CACHE: dict[str, Any] = {"ts": 0.0, "items": {}}
 
 
@@ -94,30 +42,41 @@ def default_policy(rule_type: str, *, require_available: bool = True) -> dict[st
     key = str(rule_type or "").strip().lower()
     if require_available and not is_type_available(key):
         raise ValueError("当前插件未提供该规则类型")
-    base = RULE_TYPE_DEFAULTS.get(key)
-    if not base:
-        config = get_rule_type_config(key)
-        strategy = str(config.get("strategy") or "").strip().lower()
-        strategy_defaults = STRATEGY_POLICY_DEFAULTS.get(strategy)
-        if not strategy_defaults:
-            raise ValueError("未知规则类型")
-        base = dict(strategy_defaults)
-        base["label"] = str(config.get("label") or key)
-    merged = dict(base)
+    config = get_rule_type_config(key)
+    merged = dict(config)
     merged.update(_plugin_defaults(key))
+    strategy = str(merged.get("strategy") or config.get("strategy") or "").strip().lower()
+    default_strategy = "normalized_text" if strategy == "line" else ""
+    default_ttl = 20 if strategy == "line" else 0
+    default_template_mode = "off"
+    default_forward = True
+
+    dedup_strategy = str(
+        merged.get("dedup_strategy") or config.get("dedup_strategy") or default_strategy
+    ).strip()
+    if not dedup_strategy:
+        raise ValueError("插件未提供该规则类型的去重策略")
     merged["rule_type"] = key
-    merged["label"] = str(merged.get("label") or base["label"])
-    merged["dedup_strategy"] = str(
-        merged.get("dedup_strategy") or base["dedup_strategy"]
+    merged["label"] = str(merged.get("label") or config.get("label") or key)
+    merged["strategy"] = strategy
+    merged["dedup_strategy"] = dedup_strategy
+    mode = str(
+        merged.get("lottery_template_mode")
+        or config.get("lottery_template_mode")
+        or default_template_mode
     )
-    mode = str(merged.get("lottery_template_mode") or base["lottery_template_mode"])
     merged["lottery_template_mode"] = (
-        mode if mode in {"global", "id", "off"} else base["lottery_template_mode"]
+        mode if mode in {"global", "id", "off"} else default_template_mode
     )
     merged["ttl_minutes"] = _normalize_ttl(
-        merged.get("ttl_minutes"), base["ttl_minutes"]
+        merged.get("ttl_minutes", config.get("ttl_minutes")), default_ttl
     )
-    merged["forward"] = bool(merged.get("forward", base["forward"]))
+    merged["forward"] = bool(
+        merged.get("forward", config.get("forward", default_forward))
+    )
+    merged["code_dedup"] = bool(
+        merged.get("code_dedup", config.get("code_dedup", False))
+    )
     return merged
 
 
@@ -132,7 +91,6 @@ def normalize_policy(value: dict[str, Any] | None, rule_type: str = "") -> dict[
     base["rule_type"] = selected_type
     base["label"] = str(
         base.get("label")
-        or RULE_TYPE_DEFAULTS.get(selected_type, {}).get("label")
         or selected_type
     )
     base["dedup_strategy"] = str(base.get("dedup_strategy") or "")
@@ -146,10 +104,7 @@ def normalize_policy(value: dict[str, Any] | None, rule_type: str = "") -> dict[
 def should_run_code_dedup(policy: dict[str, Any] | None) -> bool:
     if not policy:
         return True
-    return (
-        str(policy.get("rule_type") or "") == "code"
-        or str(policy.get("dedup_strategy") or "") == "code_identity"
-    )
+    return bool(policy.get("code_dedup", False))
 
 
 def policy_is_available(policy: dict[str, Any] | None) -> bool:

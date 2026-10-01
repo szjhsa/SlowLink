@@ -180,20 +180,6 @@
       "alpn"
     ]
   },
-  "code_identity": {
-    "enabled": true,
-    "mask_char": "*",
-    "mask_mode": "any_length",
-    "mask_width": 1,
-    "min_fixed_chars": 6,
-    "ttl_minutes": 20,
-    "pending_seconds": 30,
-    "max_candidates": 300,
-    "scope_regex": "^(?P<scope>.+?-(?:Register|Renew)_)(?P<suffix>.+)$",
-    "extract_patterns": [
-      "(?<![A-Za-z0-9_-])(?P<code>[^\\s`：:，,]+(?:-[^\\s`：:，,]+)*-\\d+-(?:Register|Renew)_[^\\s`]+?)(?=$|\\s|[，。！？？；：、）】]|[,.;:)\\]}>`~](?![A-Za-z0-9_-]))"
-    ]
-  },
   "dedup": {
     "register_keywords": ["开放注册", "自由注册", "开放注册中", "注册开放", "开注", "开注中", "开放名额", "register", "renew"],
     "lottery_keywords": ["抽奖", "抽奖开始", "抽奖开始啦", "抽奖活动已开始", "刮刮乐", "奖品内容", "抽奖信息", "新的抽奖已经创建"],
@@ -239,6 +225,7 @@
     "code": {
       "label": "码子",
       "dedup_strategy": "code_identity",
+      "code_dedup": true,
       "ttl_minutes": 20,
       "lottery_template_mode": "off",
       "forward": true
@@ -246,6 +233,7 @@
     "lottery": {
       "label": "抽奖",
       "dedup_strategy": "lottery_identity",
+      "code_dedup": false,
       "ttl_minutes": 720,
       "lottery_template_mode": "global",
       "forward": true
@@ -253,6 +241,7 @@
     "keyword": {
       "label": "关键词",
       "dedup_strategy": "normalized_text",
+      "code_dedup": false,
       "ttl_minutes": 20,
       "lottery_template_mode": "off",
       "forward": true
@@ -260,6 +249,7 @@
     "exclude": {
       "label": "排除",
       "dedup_strategy": "none",
+      "code_dedup": false,
       "ttl_minutes": 0,
       "lottery_template_mode": "off",
       "forward": false
@@ -283,6 +273,64 @@
         "aliases": ["排除", "排除文本"]
       }
     }
+  },
+  "ui": {
+    "code_tab_title": "码识别",
+    "code_mode_active": "插件自动识别",
+    "code_mode_pure": "纯净自定义",
+    "code_active_hint": "完整 Register / Renew 强格式可直接触发；Whitelist 十位完整码需先命中正则，再用于准确去重。",
+    "code_pure_hint": "纯净模式只使用你添加的码规则。",
+    "code_advanced_hint_active": "用于添加特殊码格式。",
+    "code_advanced_hint_pure": "添加你的码识别格式；勾选“允许单独触发”后可直接转发。",
+    "code_name_placeholder": "规则名称，例如 VIP 邀请码",
+    "code_pattern_placeholder": "识别正则，例如 VIP-[A-Za-z0-9-]+",
+    "code_strict_label": "检查注册/邀请上下文",
+    "code_reset_active": "恢复默认码规则",
+    "code_reset_pure": "清空码识别规则",
+    "dedup_hint": "这里只影响新规则和没有单独设置时间的旧规则。",
+    "dedup_simple_fields": [
+      {"key": "dedup_code_minutes", "label": "完整码", "default": "20"},
+      {"key": "dedup_lottery_minutes", "label": "抽奖", "default": "720"},
+      {"key": "dedup_other_minutes", "label": "普通文本", "default": "20"}
+    ],
+    "dedup_advanced_fields": [
+      {"key": "dedup_register_minutes", "label": "注册 / 开注", "default": "20"},
+      {"key": "dedup_invite_minutes", "label": "邀请码 / 注册码", "default": "0"},
+      {"key": "dedup_joint_lottery_minutes", "label": "联合抽奖", "default": "4320"},
+      {"key": "dedup_long_term_minutes", "label": "长期活动", "default": "10080"}
+    ],
+    "dedup_custom_fields": [
+      {
+        "key": "dedup_lottery_template_mode",
+        "label": "抽奖跨模板去重",
+        "default": "global",
+        "options": [
+          {"value": "global", "label": "全局：所有抽奖模板统一去重（默认）"},
+          {"value": "id", "label": "仅 ID / 种子：只有明确抽奖标识才去重"},
+          {"value": "off", "label": "关闭跨模板：只按原文本去重"}
+        ]
+      },
+      {
+        "key": "dedup_lottery_key_mode",
+        "label": "抽奖键模式",
+        "default": "id",
+        "hidden": true,
+        "options": [
+          {"value": "id", "label": "抽奖 ID"},
+          {"value": "id_keyword", "label": "抽奖 ID + 关键词"},
+          {"value": "id_prize_keyword", "label": "抽奖 ID + 奖品 + 关键词"}
+        ]
+      }
+    ],
+    "stats_collision_title": "抽奖身份碰撞 TOP",
+    "collision_blocked_label": "被全局抽奖身份拦截",
+    "collision_empty": "暂无抽奖碰撞记录",
+    "collision_mark_label": "标记为不同抽奖",
+    "perf_duplicate_code_label": "邀请码重复",
+    "debug_code_label": "码识别",
+    "debug_code_identity_label": "完整码身份",
+    "debug_lottery_identity_label": "抽奖唯一字段",
+    "debug_lottery_mode_label": "抽奖去重模式"
   },
   "flow": {
     "priority_keywords": [

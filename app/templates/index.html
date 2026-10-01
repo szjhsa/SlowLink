@@ -179,6 +179,7 @@
 </section>
 
 <section class="ui-board grouped-board rules-board" data-active="rules" id="rulesBoard" data-page-panel="rules">
+  {% set ui = plugin_ui or {} %}
   <div class="board-head"><div><h2>规则</h2></div></div>
   <div class="tab-shell grouped-tabs" data-tabs="ruleset">
     <div class="tab-nav">
@@ -221,11 +222,11 @@
         <div class="collapse-box open-lite"><div class="summary-lite">当前排除文本：<span id="excludeTextCount">{{ exclude_texts|length }}</span> 条</div><div class="compact-list" id="excludeTextList"></div></div>
       </div>
       <div class="tab-panel" data-panel="codes">
-        <h3>码识别</h3>
+        <h3>{{ ui.get('code_tab_title', '规则识别') }}</h3>
         <div class="code-summary-row">
           <div>
             <span>识别模式</span>
-            <b>{% if active_plugin %}插件自动识别{% else %}纯净自定义{% endif %}</b>
+            <b>{% if active_plugin %}{{ ui.get('code_mode_active', '插件自动识别') }}{% else %}{{ ui.get('code_mode_pure', '纯净自定义') }}{% endif %}</b>
           </div>
           <div>
             <span>已加载规则</span>
@@ -233,28 +234,28 @@
           </div>
         </div>
         {% if active_plugin %}
-        <p class="hint">完整 Register / Renew 强格式可直接触发；Whitelist 十位完整码需先命中正则，再用于准确去重。</p>
+        <p class="hint">{{ ui.get('code_active_hint', '插件会按当前规则识别和去重。') }}</p>
         {% else %}
-        <p class="hint">纯净模式只使用你添加的码规则。</p>
+        <p class="hint">{{ ui.get('code_pure_hint', '纯净模式只使用你添加的识别规则。') }}</p>
         {% endif %}
         <details class="simple-advanced code-advanced">
           <summary>高级：自定义码规则</summary>
           <div class="simple-advanced-body">
-            <p class="hint">{% if active_plugin %}用于添加特殊码格式。{% else %}添加你的码识别格式；勾选“允许单独触发”后可直接转发。{% endif %}</p>
+            <p class="hint">{% if active_plugin %}{{ ui.get('code_advanced_hint_active', '用于添加特殊识别格式。') }}{% else %}{{ ui.get('code_advanced_hint_pure', '添加你的识别格式；勾选“允许单独触发”后可直接转发。') }}{% endif %}</p>
             <form action="/add_code_rule" method="post" class="code-rule-form" data-ajax="1">
               <div class="code-rule-input-grid">
-                <input name="name" placeholder="规则名称，例如 VIP 邀请码">
-                <input name="pattern" placeholder="识别正则，例如 VIP-[A-Za-z0-9-]+">
+                <input name="name" placeholder="{{ ui.get('code_name_placeholder', '规则名称') }}">
+                <input name="pattern" placeholder="{{ ui.get('code_pattern_placeholder', '识别正则') }}">
                 <input name="group" value="0" placeholder="提取组，默认 0">
               </div>
               <div class="code-rule-option-grid">
                 <label class="inline-check"><input type="checkbox" name="fast" value="1" checked> 极速通道</label>
-                <label class="inline-check"><input type="checkbox" name="strict_context" value="1" checked> 检查注册/邀请上下文</label>
+                <label class="inline-check"><input type="checkbox" name="strict_context" value="1" checked> {{ ui.get('code_strict_label', '检查识别上下文') }}</label>
                 <label class="inline-check danger-inline"><input type="checkbox" name="trigger" value="1"> 允许这条码规则单独触发转发</label>
               </div>
               <button>添加码规则</button>
             </form>
-            <div class="button-row compact-actions"><form action="/reset_code_rules" method="post" data-ajax="1"><button class="secondary small">{% if active_plugin %}恢复默认码规则{% else %}清空码识别规则{% endif %}</button></form></div>
+            <div class="button-row compact-actions"><form action="/reset_code_rules" method="post" data-ajax="1"><button class="secondary small">{% if active_plugin %}{{ ui.get('code_reset_active', '恢复默认规则') }}{% else %}{{ ui.get('code_reset_pure', '清空识别规则') }}{% endif %}</button></form></div>
             <div class="collapse-box open-lite"><div class="summary-lite">自定义规则列表</div><div class="compact-list code-rule-list" id="codeRuleList"></div></div>
           </div>
         </details>
@@ -268,26 +269,29 @@
             <span class="dedup-priority-note">每条规则自己的时间优先</span>
           </div>
           {% if active_plugin %}
-          <p class="hint">这里只影响新规则和没有单独设置时间的旧规则。</p>
+          <p class="hint">{{ ui.get('dedup_hint', '这里只影响新规则和没有单独设置时间的旧规则。') }}</p>
           <div class="dedup-simple-grid">
-            <label>完整码<select name="dedup_code_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_code_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>抽奖<select name="dedup_lottery_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_lottery_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-            <label>普通文本<select name="dedup_other_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_other_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+            {% for f in ui.get('dedup_simple_fields', []) %}
+            <label>{{ f.label }}<select name="{{ f.key }}">{% for v,t in opts %}<option value="{{v}}" {% if dedup_values.get(f.key, f.default)==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+            {% endfor %}
           </div>
           <details class="simple-advanced">
             <summary>高级默认值</summary>
             <div class="dedup-grid dedup-advanced-grid">
-              <label>注册 / 开注<select name="dedup_register_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_register_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-              <label>邀请码 / 注册码<select name="dedup_invite_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_invite_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-              <label>联合抽奖<select name="dedup_joint_lottery_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_joint_lottery_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-              <label>长期活动<select name="dedup_long_term_minutes">{% for v,t in opts %}<option value="{{v}}" {% if dedup_long_term_minutes==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
-              <label>抽奖跨模板去重
-                <select name="dedup_lottery_template_mode">
-                  <option value="global" {% if dedup_lottery_template_mode=='global' %}selected{% endif %}>全局：所有抽奖模板统一去重（默认）</option>
-                  <option value="id" {% if dedup_lottery_template_mode=='id' %}selected{% endif %}>仅 ID / 种子：只有明确抽奖标识才去重</option>
-                  <option value="off" {% if dedup_lottery_template_mode=='off' %}selected{% endif %}>关闭跨模板：只按原文本去重</option>
+              {% for f in ui.get('dedup_advanced_fields', []) %}
+              <label>{{ f.label }}<select name="{{ f.key }}">{% for v,t in opts %}<option value="{{v}}" {% if dedup_values.get(f.key, f.default)==v %}selected{% endif %}>{{t}}</option>{% endfor %}</select></label>
+              {% endfor %}
+              {% for f in ui.get('dedup_custom_fields', []) %}
+              {% if not f.hidden %}
+              <label>{{ f.label }}
+                <select name="{{ f.key }}">
+                  {% for option in f.options %}
+                  <option value="{{ option.value }}" {% if dedup_values.get(f.key, f.default)==option.value %}selected{% endif %}>{{ option.label }}</option>
+                  {% endfor %}
                 </select>
               </label>
+              {% endif %}
+              {% endfor %}
             </div>
           </details>
           {% else %}
@@ -428,6 +432,8 @@ let stateRequestSeq = 0;
 const POLL_INTERVAL_MS = 5000;
 const CSRF_TOKEN = "{{ csrf_token() }}";
 const RULE_TYPE_OPTIONS = {{ rule_generator_types|tojson }};
+const PLUGIN_UI = {{ plugin_ui|tojson }};
+function uiLabel(key, fallback){ return PLUGIN_UI[key] || fallback; }
 
 function applySystemView(view){
   const allowed = ['account', 'tools', 'records'];
@@ -790,7 +796,7 @@ function renderLogs(data){
   }
   const perfBox = document.getElementById('perfBox');
   if(hasPerfEvents && perfBox){
-    const resultText = {sent:'已转发', duplicate:'重复跳过', duplicate_code:'邀请码重复', send_failed:'发送失败'};
+    const resultText = {sent:'已转发', duplicate:'重复跳过', duplicate_code:uiLabel('perf_duplicate_code_label','识别码重复'), send_failed:'发送失败'};
     perfBox.innerHTML = perfEvents.length ? perfEvents.map(p => {
       const label = resultText[p.result] || p.result || '-';
       const slow = p.slow ? ' slow' : '';
@@ -809,7 +815,7 @@ function renderDedupStats(stats){
     ['规则命中 TOP', stats.rule_hits || []],
     ['规则去重 TOP', stats.rule_duplicates || []],
     ['来源去重 TOP', stats.source_duplicates || []],
-    ['抽奖身份碰撞 TOP', stats.lottery_collisions || []],
+    [uiLabel('stats_collision_title','身份碰撞 TOP'), stats.lottery_collisions || []],
   ];
   box.innerHTML = groups.map(([title, rows]) => {
     if(!rows || !rows.length) return `<div class="stats-block"><b>${esc(title)}</b><div class="empty">暂无数据</div></div>`;
@@ -819,12 +825,12 @@ function renderDedupStats(stats){
 function renderCollisions(collisions){
   const box = document.getElementById('collisionBox');
   if(!box) return;
-  box.innerHTML = collisions.length ? collisions.map(c => `<div class="log"><b>${esc(c.time)}</b> | 被全局抽奖身份拦截 | 本次来源：${esc(c.source || '-')}${c.link?'<br><a href="'+esc(c.link)+'" target="_blank">'+esc(c.link)+'</a>':''}<br><span class="muted">身份：<code>${esc(c.identity || '-')}</code></span><form action="/mark_collision_distinct" method="post" data-ajax="1" style="margin-top:8px;"><input type="hidden" name="identity" value="${esc(c.identity || '')}"><input type="hidden" name="dedup_id" value="${esc(c.dedup_id || '')}"><button class="small warning">标记为不同抽奖</button></form></div>`).join('') : '<div class="empty">暂无抽奖碰撞记录</div>';
+  box.innerHTML = collisions.length ? collisions.map(c => `<div class="log"><b>${esc(c.time)}</b> | ${esc(uiLabel('collision_blocked_label','被全局身份拦截'))} | 本次来源：${esc(c.source || '-')}${c.link?'<br><a href="'+esc(c.link)+'" target="_blank">'+esc(c.link)+'</a>':''}<br><span class="muted">身份：<code>${esc(c.identity || '-')}</code></span><form action="/mark_collision_distinct" method="post" data-ajax="1" style="margin-top:8px;"><input type="hidden" name="identity" value="${esc(c.identity || '')}"><input type="hidden" name="dedup_id" value="${esc(c.dedup_id || '')}"><button class="small warning">${esc(uiLabel('collision_mark_label','标记为不同活动'))}</button></form></div>`).join('') : '<div class="empty">'+esc(uiLabel('collision_empty','暂无碰撞记录'))+'</div>';
 }
 function renderRegexResult(r){
   if(!r) return;
   const box = document.getElementById('debugResult');
-  box.innerHTML = `<div class="debug-result ${r.matched?'ok-box':'warn-box'}"><div><b>命中：</b>${r.matched?'是':'否'}${r.excluded_text_notice?' / 命中排除文本：'+esc(r.excluded_keyword||''):''}${r.usage_notice?' / 已被使用通知过滤':''}${r.closed_register_notice?' / 已关闭注册过滤':''}${r.registration_success_notice?' / 个人注册成功通知过滤':''}</div>${r.rule?'<div><b>命中规则：</b><code>'+esc(r.rule)+'</code></div>':''}${r.rule_type?'<div><b>规则类型：</b>'+esc((r.rule_policy||{}).label||r.rule_type)+'　<b>绑定策略：</b><code>'+esc((r.rule_policy||{}).dedup_strategy||r.dedup_strategy||'-')+'</code></div>':''}${r.candidate?'<div><b>命中文本：</b>'+esc(r.candidate)+'</div>':''}${r.code_note?'<div><b>码识别：</b>'+esc(r.code_rule||'已识别')+' / '+esc(r.code_note)+'</div>':''}<div><b>活动类型：</b>${esc(r.activity)}　<b>去重时间：</b>${r.ttl_minutes==0?'不去重':esc(r.ttl_minutes)+' 分钟'}</div>${r.code_identity?'<div><b>完整码身份：</b><code>'+esc(r.code_identity)+'</code></div>':''}${r.lottery_identity?'<div><b>抽奖唯一字段：</b><code>'+esc(r.lottery_identity)+'</code></div><div><b>抽奖去重模式：</b>'+esc(r.lottery_mode||'id')+'</div>':''}<div><b>去重 ID：</b><code>${esc(r.dedup_id)}</code></div><details class="inner-details"><summary>查看清理结果</summary><div class="code-block"><b>原文本</b><pre>${esc(r.original)}</pre></div><div class="code-block"><b>清理文本</b><pre>${esc(r.normalized)}</pre></div><div class="code-block"><b>紧凑文本</b><pre>${esc(r.compact)}</pre></div><div class="code-block"><b>核心文本</b><pre>${esc(r.core)}</pre></div></details></div>`;
+  box.innerHTML = `<div class="debug-result ${r.matched?'ok-box':'warn-box'}"><div><b>命中：</b>${r.matched?'是':'否'}${r.excluded_text_notice?' / 命中排除文本：'+esc(r.excluded_keyword||''):''}${r.usage_notice?' / 已被使用通知过滤':''}${r.closed_register_notice?' / 已关闭注册过滤':''}${r.registration_success_notice?' / 个人注册成功通知过滤':''}</div>${r.rule?'<div><b>命中规则：</b><code>'+esc(r.rule)+'</code></div>':''}${r.rule_type?'<div><b>规则类型：</b>'+esc((r.rule_policy||{}).label||r.rule_type)+'　<b>绑定策略：</b><code>'+esc((r.rule_policy||{}).dedup_strategy||r.dedup_strategy||'-')+'</code></div>':''}${r.candidate?'<div><b>命中文本：</b>'+esc(r.candidate)+'</div>':''}${r.code_note?'<div><b>'+esc(uiLabel('debug_code_label','识别'))+'：</b>'+esc(r.code_rule||'已识别')+' / '+esc(r.code_note)+'</div>':''}<div><b>活动类型：</b>${esc(r.activity)}　<b>去重时间：</b>${r.ttl_minutes==0?'不去重':esc(r.ttl_minutes)+' 分钟'}</div>${r.code_identity?'<div><b>'+esc(uiLabel('debug_code_identity_label','识别身份'))+'：</b><code>'+esc(r.code_identity)+'</code></div>':''}${r.lottery_identity?'<div><b>'+esc(uiLabel('debug_lottery_identity_label','活动唯一字段'))+'：</b><code>'+esc(r.lottery_identity)+'</code></div><div><b>'+esc(uiLabel('debug_lottery_mode_label','活动去重模式'))+'：</b>'+esc(r.lottery_mode||'id')+'</div>':''}<div><b>去重 ID：</b><code>${esc(r.dedup_id)}</code></div><details class="inner-details"><summary>查看清理结果</summary><div class="code-block"><b>原文本</b><pre>${esc(r.original)}</pre></div><div class="code-block"><b>清理文本</b><pre>${esc(r.normalized)}</pre></div><div class="code-block"><b>紧凑文本</b><pre>${esc(r.compact)}</pre></div><div class="code-block"><b>核心文本</b><pre>${esc(r.core)}</pre></div></details></div>`;
 }
 function renderRuleGenerateResult(r){
   if(!r) return;

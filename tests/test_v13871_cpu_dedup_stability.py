@@ -25,6 +25,12 @@ def read(path: Path) -> str:
 
 def load_code_rules_with_fake_redis(stored_rules=None):
     saved = []
+    try:
+        import plugin_runtime
+
+        plugin_runtime.invalidate()
+    except Exception:
+        pass
     fake_redis_store = types.ModuleType("redis_store")
     fake_redis_store.get_json = lambda key, default=None: stored_rules if stored_rules is not None else default
     fake_redis_store.set_json = lambda key, value: saved.append((key, value))

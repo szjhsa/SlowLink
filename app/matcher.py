@@ -4,8 +4,8 @@ import unicodedata
 import regex as _regex
 from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
-from register_code_patterns import HYPHEN_REGISTER_RENEW_PATTERN
-from plugin_registry import active_rules, builtin_section
+from plugin_registry import builtin_section
+from plugin_runtime import call_hook
 from rule_policy import get_rule_policy, policy_is_available
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
@@ -39,104 +39,9 @@ def _safe_search(compiled, text: str):
     except Exception:
         return None
 
-# ---- pre-compiled guards (unchanged) ----
-
-USAGE_HARD_WORDS = [
-    "码使用", "注册码使用", "邀请码使用", "注册代码使用",
-    "被使用", "已被使用", "已经使用", "使用成功",
-    "使用了", "兑换成功", "已兑换", "被兑换", "激活成功",
-    "领取成功", "已领取", "被领取", "使用者", "使用用户",
-    "使用注册码", "使用邀请码", "成功注册账号", "成功注册",
-]
-
-CODE_LINE_RE = re.compile(
-    r"^.+-\d+-(?:Register|Renew)_[^\s*`]+$",
-    re.I,
-)
-HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
-INV_CODE_RE = re.compile(r"\bINV-[A-Z0-9]+(?:-[A-Z0-9]+)+\b", re.I)
-USAGE_STATUS_RE = re.compile(r"已使用\s*[:：]\s*\d+\s*次?", re.I)
-
-CLOSED_REGISTER_RE = re.compile(
-    r"(?:"
-    r"(?:已关闭|关闭|暂停|停止|结束|已结束|暂不开放|不开放|未开放)\s*(?:自由注册|开放注册|注册开放|开注|注册)"
-    r"|(?:自由注册|开放注册|注册开放|开注)\s*(?:已关闭|关闭|暂停|停止|结束|已结束)"
-    r"|注册\s*(?:已关闭|关闭|暂停|停止|结束|已结束|暂不开放|不开放|未开放)"
-    r"|(?:满员|已满|满额)"
-    r")",
-    re.I,
-)
-REGISTRATION_STATUS_RE = re.compile(
-    r"(?m)^[^\n]*?(?:注册|开注)状态\s*[|｜:：]\s*"
-    r"(?P<state>true|false|on|off|enabled|disabled|1|0|已开启|开启|开放|已关闭|关闭|未开放)"
-    r"(?=$|\s|[•·])",
-    re.I,
-)
-EXHAUSTED_REGISTER_RE = re.compile(
-    r"(?:剩余可注册(?:人数)?|剩余名额|可注册名额)\s*(?:[|｜:：]\s*)?"
-    r"(?:\*\*)?\s*0\s*(?:\*\*)?",
-    re.I,
-)
-OPEN_REGISTRATION_STATES = {"true", "on", "enabled", "1", "已开启", "开启", "开放"}
-CLOSED_REGISTRATION_STATES = {"false", "off", "disabled", "0", "已关闭", "关闭", "未开放"}
-REGISTRATION_SUCCESS_RE = re.compile(
-    r"(?:自由|定时|开放)?注册成功(?=$|\s|[-—:：|，。!！])",
-    re.I,
-)
-REGISTRATION_ACCOUNT_MARKERS = ["创建了", "账号有效期", "到期时间"]
-
-
 def reload_builtins():
-    """Load built-in matcher guards from the active plugin rule pack."""
-    global USAGE_HARD_WORDS
-    global CODE_LINE_RE, HYPHEN_REGISTER_RENEW_RE, INV_CODE_RE, USAGE_STATUS_RE
-    global CLOSED_REGISTER_RE, REGISTRATION_STATUS_RE, EXHAUSTED_REGISTER_RE
-    global REGISTRATION_SUCCESS_RE, REGISTRATION_ACCOUNT_MARKERS
-    global OPEN_REGISTRATION_STATES, CLOSED_REGISTRATION_STATES
-
-    section = builtin_section("matcher", {}) or {}
-    has_plugin = bool(active_rules())
-    if not has_plugin:
-        never = re.compile(r"(?!)", re.I)
-        USAGE_HARD_WORDS = []
-        CODE_LINE_RE = never
-        HYPHEN_REGISTER_RENEW_RE = never
-        INV_CODE_RE = never
-        USAGE_STATUS_RE = never
-        CLOSED_REGISTER_RE = never
-        REGISTRATION_STATUS_RE = never
-        EXHAUSTED_REGISTER_RE = never
-        REGISTRATION_SUCCESS_RE = never
-        REGISTRATION_ACCOUNT_MARKERS = []
-        OPEN_REGISTRATION_STATES = set()
-        CLOSED_REGISTRATION_STATES = set()
-        return
-
-    never = re.compile(r"(?!)", re.I)
-    USAGE_HARD_WORDS = list(section.get("usage_hard_words") or [])
-    CODE_LINE_RE = re.compile(section.get("code_line_pattern") or r"(?!)", re.I)
-    HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
-    INV_CODE_RE = re.compile(section.get("inv_code_pattern") or r"(?!)", re.I)
-    USAGE_STATUS_RE = re.compile(section.get("usage_status_pattern") or r"(?!)", re.I)
-    CLOSED_REGISTER_RE = re.compile(
-        section.get("closed_register_pattern") or r"(?!)",
-        re.I,
-    )
-    REGISTRATION_STATUS_RE = re.compile(
-        section.get("registration_status_pattern") or r"(?!)",
-        re.I,
-    )
-    EXHAUSTED_REGISTER_RE = re.compile(
-        section.get("exhausted_register_pattern") or r"(?!)",
-        re.I,
-    )
-    REGISTRATION_SUCCESS_RE = re.compile(
-        section.get("registration_success_pattern") or r"(?!)",
-        re.I,
-    )
-    REGISTRATION_ACCOUNT_MARKERS = list(section.get("registration_account_markers") or [])
-    OPEN_REGISTRATION_STATES = set(section.get("open_registration_states") or [])
-    CLOSED_REGISTRATION_STATES = set(section.get("closed_registration_states") or [])
+    """Compatibility hook; matcher rules are supplied by the active plugin."""
+    return None
 
 
 def _rich_text(node, depth: int = 0) -> str:
@@ -286,78 +191,39 @@ def _compiled_rules(ttl: float = 60.0):
     return _RULE_CACHE
 
 
-# ---- usage / closed-register guards (unchanged logic) ----
-
-def _is_usage_notice(normalized: str, compact: str) -> bool:
-    low = normalized.lower()
-    compact_low = compact.lower()
-
-    has_status_field = bool(USAGE_STATUS_RE.search(normalized) or USAGE_STATUS_RE.search(compact))
-    has_invite_info = (
-        "可使用次数" in normalized
-        or "邀请有效期" in normalized
-        or "注册链接" in normalized
-        or "注册权益" in normalized
-        or "register?code=" in low
-        or "register_" in compact_low
-        or "renew_" in compact_low
-        or bool(HYPHEN_REGISTER_RENEW_RE.search(compact))
-        or bool(CODE_LINE_RE.search(compact))
-        or bool(INV_CODE_RE.search(compact))
+def _guard_flags(normalized: str, compact: str) -> tuple[bool, bool, bool]:
+    plugin_result = call_hook(
+        "analyze_match_guards",
+        {
+            "text": normalized,
+            "compact": compact,
+            "config": builtin_section("matcher", {}) or {},
+        },
+        default=None,
     )
-    if has_status_field and has_invite_info:
-        return False
-
-    has_hard_usage = any(w.lower() in low or w.lower() in compact_low for w in USAGE_HARD_WORDS)
-    if not has_hard_usage:
-        return False
-
-    code_detail = extract_code_detail(normalized) or extract_code_detail(compact)
-    if code_detail or CODE_LINE_RE.search(compact) or "register_" in compact_low or "renew_" in compact_low:
-        return True
-
-    if any(k in normalized for k in ["邀请码", "注册码", "注册代码", "兑换码", "激活码"]):
-        return True
-
-    return False
+    if isinstance(plugin_result, dict):
+        return (
+            bool(plugin_result.get("usage_notice")),
+            bool(plugin_result.get("closed_register_notice")),
+            bool(plugin_result.get("registration_success_notice")),
+        )
+    return (False, False, False)
 
 
 def _explicit_registration_status(normalized: str) -> str:
-    match = REGISTRATION_STATUS_RE.search(normalized)
-    if not match:
-        return ""
-    value = match.group("state").strip().lower()
-    if value in OPEN_REGISTRATION_STATES:
-        return "open"
-    if value in CLOSED_REGISTRATION_STATES:
-        return "closed"
-    return ""
+    result = call_hook(
+        "explicit_registration_status",
+        {
+            "text": normalized,
+            "config": builtin_section("matcher", {}) or {},
+        },
+        default=None,
+    )
+    return result if result in {"open", "closed"} else ""
 
 
 def _is_closed_register_notice(normalized: str, compact: str) -> bool:
-    if _explicit_registration_status(normalized) == "closed":
-        return True
-
-    has_register_marker = any(k in normalized or k in compact for k in [
-        "自由注册", "开放注册", "注册开放", "开注", "注册"
-    ])
-    if not has_register_marker:
-        return False
-
-    if EXHAUSTED_REGISTER_RE.search(normalized) or EXHAUSTED_REGISTER_RE.search(compact):
-        return True
-
-    return bool(CLOSED_REGISTER_RE.search(normalized) or CLOSED_REGISTER_RE.search(compact))
-
-
-def _is_registration_success_notice(normalized: str, compact: str) -> bool:
-    has_success = bool(
-        REGISTRATION_SUCCESS_RE.search(normalized)
-        or REGISTRATION_SUCCESS_RE.search(compact)
-    )
-    if not has_success:
-        return False
-    return any(marker in normalized or marker in compact for marker in REGISTRATION_ACCOUNT_MARKERS)
+    return _guard_flags(normalized, compact)[1]
 
 
 # ---- main matching (optimized) ----
@@ -394,9 +260,10 @@ def analyze_message(text: str) -> dict:
             "registration_success_notice": False,
         }
     compact = re.sub(r"\s+", "", normalized)
-    usage_notice = _is_usage_notice(normalized, compact)
-    closed_register_notice = _is_closed_register_notice(normalized, compact)
-    registration_success_notice = _is_registration_success_notice(normalized, compact)
+    usage_notice, closed_register_notice, registration_success_notice = _guard_flags(
+        normalized,
+        compact,
+    )
     if usage_notice or closed_register_notice or registration_success_notice:
         return {
             "matched": False,
@@ -469,11 +336,15 @@ def match_rules(text: str) -> tuple[bool, str]:
     compact = re.sub(r"\s+", "", normalized)
 
     # Guards -- pass pre-computed to avoid re-normalization
-    if _is_usage_notice(normalized, compact):
+    usage_notice, closed_register_notice, registration_success_notice = _guard_flags(
+        normalized,
+        compact,
+    )
+    if usage_notice:
         return False, ""
-    if _is_closed_register_notice(normalized, compact):
+    if closed_register_notice:
         return False, ""
-    if _is_registration_success_notice(normalized, compact):
+    if registration_success_notice:
         return False, ""
 
     rules = _compiled_rules()
@@ -528,9 +399,7 @@ def match_rule_details(text: str) -> dict:
             "compact": re.sub(r"\s+", "", normalized),
         }
     compact = re.sub(r"\s+", "", normalized)
-    usage = _is_usage_notice(normalized, compact)
-    closed_register = _is_closed_register_notice(normalized, compact)
-    registration_success = _is_registration_success_notice(normalized, compact)
+    usage, closed_register, registration_success = _guard_flags(normalized, compact)
     code_detail = extract_code_detail(normalized) or extract_code_detail(compact)
 
     if usage:

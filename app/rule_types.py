@@ -8,6 +8,10 @@ CORE_RULE_TYPES = {
         "label": "关键词",
         "strategy": "line",
         "aliases": ["keyword", "关键词", "文本"],
+        "dedup_strategy": "normalized_text",
+        "ttl_minutes": 20,
+        "lottery_template_mode": "off",
+        "forward": True,
     },
 }
 
@@ -30,6 +34,7 @@ def available_rule_types() -> list[dict]:
         from plugin_registry import builtin_section
 
         section = builtin_section("rule_generator", {}) or {}
+        policy_section = builtin_section("rule_types", {}) or {}
         plugin_types = section.get("types")
         if isinstance(plugin_types, dict):
             for type_id, raw in plugin_types.items():
@@ -45,7 +50,7 @@ def available_rule_types() -> list[dict]:
                     or strategy not in ALLOWED_GENERATOR_STRATEGIES
                 ):
                     continue
-                items.append({
+                item = {
                     "id": normalized_id,
                     "label": label,
                     "strategy": strategy,
@@ -54,7 +59,14 @@ def available_rule_types() -> list[dict]:
                         for alias in (aliases if isinstance(aliases, list) else [])
                         if str(alias).strip()
                     ],
-                })
+                }
+                defaults = policy_section.get(normalized_id)
+                if isinstance(defaults, dict):
+                    item.update(defaults)
+                    item["id"] = normalized_id
+                    item["label"] = str(item.get("label") or label)
+                    item["strategy"] = strategy
+                items.append(item)
     except Exception:
         pass
 

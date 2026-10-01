@@ -222,8 +222,7 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 import code_rules
                 import dedup
 
-                self.assertEqual(matcher.USAGE_HARD_WORDS, [])
-                self.assertEqual(matcher.CODE_LINE_RE.pattern, "(?!)")
+                self.assertFalse(matcher._guard_flags("成功注册 邀请码：ABC123", "成功注册邀请码:ABC123")[0])
                 self.assertEqual(code_rules.DEFAULT_CODE_RULES, [])
                 self.assertFalse(code_rules._strong_codes_enabled())
                 self.assertEqual(dedup.LOTTERY_KWS, [])
@@ -233,7 +232,7 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 os.environ["SLOWLINK_ACTIVE_PLUGIN"] = "builtin"
                 plugin_registry.invalidate()
                 plugin_registry.reload_all()
-                self.assertIn("成功注册", matcher.USAGE_HARD_WORDS)
+                self.assertTrue(matcher._guard_flags("成功注册 邀请码：ABC123", "成功注册邀请码:ABC123")[0])
                 self.assertNotEqual(code_rules.DEFAULT_CODE_RULES, [])
                 self.assertTrue(code_rules._strong_codes_enabled())
                 self.assertIn("抽奖", dedup.LOTTERY_KWS)

@@ -115,8 +115,7 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
         self.assertNotEqual(first.get("identity"), second.get("identity"))
 
     def test_whitelist_pattern_stays_fast_on_long_hyphen_text(self):
-        result = inspect_with_empty_main_rules(SAMPLE)
-        pattern = getattr(result["module"], "SAFE_WHITELIST_PATTERN", "")
+        pattern = WHITELIST_MAIN_RULE
         self.assertTrue(pattern)
         compiled = re.compile(pattern, re.I | re.M)
         adversarial = ("ABCD-" * 1700)[:8192]
@@ -135,7 +134,9 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
         self.assertIn("priority_keywords = _plugin_builtin_value", source)
 
     def test_page_documents_builtin_whitelist_protection(self):
-        source = (APP / "templates" / "index.html").read_text(encoding="utf-8-sig")
+        source = (APP / "plugins" / "builtin" / "rules.json").read_text(
+            encoding="utf-8-sig"
+        )
 
         self.assertIn("Whitelist 十位完整码需先命中正则", source)
 

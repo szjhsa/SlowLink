@@ -22,12 +22,6 @@ from link_builder import (
 )
 from matcher import analyze_message, get_text
 from code_rules import extract_code_identities, normalize_code_identity
-from code_identity_plugin import (
-    claim_code_identities,
-    commit_code_identities,
-    merge_code_identities,
-    release_code_identities,
-)
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
 import json as _json
 from telegram_session_lock import SESSION_LOCK
@@ -861,7 +855,6 @@ class BotManager:
         reserved_code_keys = []
         dedup_profile = None
         try:
-            plugin_code_claim = None
             try:
                 chat = event.chat
                 if chat is None:
@@ -933,16 +926,16 @@ class BotManager:
                         core_code_identities.append(identity)
             except Exception:
                 pass
-            code_identities = merge_code_identities(
-                text,
-                code_detail.get("identity") or "",
-                core_code_identities,
-            )
+            code_identities = []
+            for candidate in [code_detail.get("identity") or "", *core_code_identities]:
+                candidate = str(candidate or "").strip()
+                if candidate and candidate not in code_identities:
+                    code_identities.append(candidate)
 
             duplicate_identity = ""
             duplicate_code_key = ""
             effective_code_minutes = code_minutes
-            if rule_policy.get("rule_type") == "code":
+            if should_run_code_dedup(rule_policy):
                 try:
                     effective_code_minutes = max(
                         0, int(rule_policy.get("ttl_minutes", code_minutes))
@@ -983,27 +976,6 @@ class BotManager:
                 push_event("info", event_message)
                 return
 
-            if code_identities and code_dedup_enabled:
-                plugin_duplicate, plugin_reason, plugin_code_claim = claim_code_identities(
-                    code_identities,
-                    ttl_minutes=effective_code_minutes,
-                )
-                if plugin_duplicate:
-                    self._release_pending_dedup(reserved_code_keys)
-                    self._requeue_pending_duplicates(reserved_code_keys)
-                    elapsed = time.monotonic() - t0
-                    perf["total_ms"] = int(elapsed * 1000)
-                    add_hit({
-                        "source": source_name,
-                        "rule": rule[:120],
-                        "link": link,
-                        "status": f"重复跳过：{plugin_reason}；耗时 {elapsed:.2f}s",
-                        "perf": perf,
-                    })
-                    self._record_perf_event(source_name, rule, link, "duplicate_code", perf, {"reason": plugin_reason})
-                    push_event("info", f"重复跳过：{plugin_reason}")
-                    return
-
             if dedup_enabled:
                 duplicate, reason, dedup_profile = check_and_mark(
                     text,
@@ -1017,7 +989,6 @@ class BotManager:
                 perf["pre_dedup_ms"] = int((time.monotonic() - t0) * 1000)
                 if duplicate:
                     self._release_pending_dedup(reserved_code_keys)
-                    release_code_identities(plugin_code_claim)
                     self._requeue_pending_duplicates(reserved_code_keys)
                     elapsed = time.monotonic() - t0
                     perf["total_ms"] = int(elapsed * 1000)
@@ -1070,7 +1041,6 @@ class BotManager:
 
             if sent:
                 self._flow_counters["forwarded"] += 1
-                commit_code_identities(plugin_code_claim)
                 self._clear_pending_duplicates(reserved_code_keys)
                 status = "已转发：" + ", ".join(sent) + f"；内部耗时 {elapsed:.2f}s"
                 if telegram_delay_sec >= 2:
@@ -1091,21 +1061,18 @@ class BotManager:
                     push_event("warning", f"内部慢转发 {elapsed:.2f}s：{source_name}{code_label}")
             if failed and not sent:
                 self._release_pending_dedup(reserved_code_keys, dedup_profile)
-                release_code_identities(plugin_code_claim)
                 self._requeue_pending_duplicates(reserved_code_keys)
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
                 self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
                 push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
         except FloodWaitError as e:
             self._release_pending_dedup(reserved_code_keys, dedup_profile)
-            release_code_identities(plugin_code_claim)
             self._requeue_pending_duplicates(reserved_code_keys)
             add_fail({"stage": "floodwait", "error": f"FloodWait {e.seconds}s；不再长时间卡住转发队列"})
             if int(getattr(e, "seconds", 0) or 0) <= 3:
                 await asyncio.sleep(int(e.seconds))
         except Exception as e:
             self._release_pending_dedup(reserved_code_keys, dedup_profile)
-            release_code_identities(plugin_code_claim)
             self._requeue_pending_duplicates(reserved_code_keys)
             add_fail({"stage": "handle_message", "error": str(e)})
             push_event("error", f"处理消息失败：{e}")

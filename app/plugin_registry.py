@@ -34,6 +34,15 @@ _RULES_CACHE: dict[str, dict] = {}
 _MANIFEST_CACHE: dict[str, dict] = {}
 
 
+def _invalidate_hook_cache(plugin_id: str | None = None) -> None:
+    try:
+        from plugin_runtime import invalidate as invalidate_hooks
+
+        invalidate_hooks(plugin_id)
+    except Exception:
+        pass
+
+
 def _version_tuple(value: str) -> tuple[int, int, int]:
     parts = str(value or "").strip().lstrip("v").split(".")
     nums = []
@@ -187,6 +196,7 @@ def invalidate(plugin_id: str | None = None) -> None:
     else:
         _RULES_CACHE.clear()
         _MANIFEST_CACHE.clear()
+    _invalidate_hook_cache(plugin_id)
 
 
 def _validate_manifest(item: dict) -> None:
@@ -240,66 +250,6 @@ def validate_rules_data(rules: dict) -> None:
             _regex_engine="regex",
             flags=_regex.I | _regex.M | _regex.S,
         )
-
-    code_identity = rules.get("code_identity")
-    if code_identity is not None:
-        if not isinstance(code_identity, dict):
-            raise ValueError("code_identity 必须是对象")
-        mask_char = code_identity.get("mask_char")
-        if mask_char is not None and (
-            not isinstance(mask_char, str) or len(mask_char) != 1
-        ):
-            raise ValueError("code_identity.mask_char 必须是单个字符")
-        mask_mode = str(code_identity.get("mask_mode") or "any_length")
-        if mask_mode not in {"exact", "any_length"}:
-            raise ValueError("code_identity.mask_mode 必须是 exact 或 any_length")
-        for key in (
-            "mask_width",
-            "min_fixed_chars",
-            "ttl_minutes",
-            "pending_seconds",
-            "max_candidates",
-        ):
-            if key in code_identity:
-                try:
-                    int(code_identity.get(key))
-                except Exception as exc:
-                    raise ValueError(f"code_identity.{key} 必须是整数") from exc
-        _validate_regex(
-            code_identity.get("scope_regex"),
-            "code_identity.scope_regex",
-            _regex_engine="re",
-            flags=0,
-        )
-        scope_regex = code_identity.get("scope_regex")
-        if scope_regex:
-            try:
-                groups = re.compile(str(scope_regex)).groupindex
-            except Exception as exc:
-                raise ValueError(f"code_identity.scope_regex 正则无效：{exc}") from exc
-            if not {"scope", "suffix"}.issubset(groups):
-                raise ValueError("code_identity.scope_regex 必须包含 scope 和 suffix 命名组")
-        extract_patterns = code_identity.get("extract_patterns")
-        if extract_patterns is not None:
-            if not isinstance(extract_patterns, list):
-                raise ValueError("code_identity.extract_patterns 必须是数组")
-            for index, pattern in enumerate(extract_patterns):
-                _validate_regex(
-                    pattern,
-                    f"code_identity.extract_patterns.{index}",
-                    _regex_engine="re",
-                    flags=0,
-                )
-                try:
-                    groups = re.compile(str(pattern)).groupindex
-                except Exception as exc:
-                    raise ValueError(
-                        f"code_identity.extract_patterns.{index} 正则无效：{exc}"
-                    ) from exc
-                if "code" not in groups:
-                    raise ValueError(
-                        f"code_identity.extract_patterns.{index} 必须包含 code 命名组"
-                    )
 
     dedup = rules["dedup"]
     for key in ("lottery_id_pattern", "lottery_seed_pattern"):
@@ -438,7 +388,7 @@ def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
             raise ValueError("插件包包含不安全路径")
         rel = Path(*parts[len(prefix_parts):])
         dest = (target / rel).resolve()
-        if not str(dest).startswith(str(target.resolve())):
+        if not dest.is_relative_to(target.resolve()):
             raise ValueError("插件包路径越界")
         dest.parent.mkdir(parents=True, exist_ok=True)
         with zf.open(name) as src, dest.open("wb") as dst:
@@ -447,6 +397,17 @@ def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
                 if not chunk:
                     break
                 dst.write(chunk)
+    for python_path in target.rglob("*.py"):
+        if not python_path.is_file():
+            continue
+        try:
+            compile(
+                python_path.read_text(encoding="utf-8-sig"),
+                str(python_path),
+                "exec",
+            )
+        except SyntaxError as exc:
+            raise ValueError(f"插件 {python_path.name} 语法无效：{exc}") from exc
     return plugin_id
 
 
@@ -533,14 +494,13 @@ def reload_all() -> None:
     """Re-apply plugin data to core modules after activation changes."""
     from matcher import reload_builtins as reload_matcher_builtins
     from code_rules import reload_builtins as reload_code_builtins
-    from code_identity_plugin import clear_cache as clear_code_identity_cache
     from dedup import reload_builtins as reload_dedup_builtins
     from rule_policy import clear_cache as clear_rule_policy_cache
     from rule_types import clear_cache as clear_rule_types_cache
 
+    _invalidate_hook_cache()
     reload_matcher_builtins()
     reload_code_builtins()
-    clear_code_identity_cache()
     reload_dedup_builtins()
     clear_rule_policy_cache()
     clear_rule_types_cache()
