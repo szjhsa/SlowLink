@@ -131,6 +131,9 @@ def read_json(path: Path) -> dict:
 
 
 def manifest(plugin_id: str) -> dict:
+    plugin_id = str(plugin_id or "").strip()
+    if not plugin_id:
+        return {}
     if plugin_id in _MANIFEST_CACHE:
         return _MANIFEST_CACHE[plugin_id]
     data = read_json(manifest_path(plugin_id))

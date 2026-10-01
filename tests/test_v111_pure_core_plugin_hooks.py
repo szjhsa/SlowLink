@@ -103,6 +103,15 @@ class PureCorePluginHooksTests(unittest.TestCase):
         self.assertNotIn("code_identity", source)
         self.assertNotIn("lottery_identity", source)
 
+    def test_pure_mode_page_does_not_require_a_plugin_manifest(self):
+        source = (APP / "web.py").read_text(encoding="utf-8-sig")
+
+        self.assertIn(
+            '"plugin_manifest": plugin_manifest(active_plugin) if active_plugin else {}',
+            source,
+        )
+        self.assertEqual(plugin_registry.manifest(""), {})
+
     def test_pure_mode_disables_plugin_business_behavior(self):
         child = textwrap.dedent(
             f"""

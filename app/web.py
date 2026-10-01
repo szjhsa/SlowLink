@@ -363,6 +363,7 @@ def _state_payload(light: bool = False) -> dict:
         for rule in regex_rules
         if (policy := get_rule_policy(rule))
     }
+    active_plugin = active_plugin_id()
     data = {
         "app_version": APP_VERSION,
         "tg_logged_in": get("tg_logged_in", "0") == "1",
@@ -388,9 +389,9 @@ def _state_payload(light: bool = False) -> dict:
         "daily_stats": _daily_stats_safe(),
         "dedup_stats": _dedup_stats(),
         "collisions": _list_collisions(30),
-        "active_plugin": active_plugin_id(),
+        "active_plugin": active_plugin,
         "plugins": list_plugins(),
-        "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
+        "plugin_manifest": plugin_manifest(active_plugin) if active_plugin else {},
         "rule_generator_types": available_rule_types(),
         "plugin_ui": plugin_ui,
     }
@@ -409,6 +410,7 @@ def _page_data() -> dict:
     }
     plugin_ui = _plugin_ui()
     dedup_values = _dedup_values(plugin_ui)
+    active_plugin = active_plugin_id()
     return {
         "app_version": APP_VERSION,
         "tg_api_id": get("tg_api_id", "") or "",
@@ -445,9 +447,9 @@ def _page_data() -> dict:
         "cache_stats": cache_stats(),
         "heartbeat": _heartbeat_payload(),
         "display_timezone": "Asia/Shanghai",
-        "active_plugin": active_plugin_id(),
+        "active_plugin": active_plugin,
         "plugins": list_plugins(),
-        "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
+        "plugin_manifest": plugin_manifest(active_plugin) if active_plugin else {},
         "rule_generator_types": available_rule_types(),
         "plugin_ui": plugin_ui,
         "dedup_values": dedup_values,
