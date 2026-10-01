@@ -25,6 +25,7 @@ from code_rules import extract_code_identities, normalize_code_identity
 from code_identity_plugin import (
     claim_code_identities,
     commit_code_identities,
+    merge_code_identities,
     release_code_identities,
 )
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
@@ -925,16 +926,18 @@ class BotManager:
             dedup_enabled, mode, _dedup_other, code_minutes = self._cached_dedup_settings()
 
             # Layer 0: same invite code already seen -> block (even if text differs)
-            code_identities = []
-            code_identity = code_detail.get("identity") or ""
-            if code_identity:
-                code_identities.append(code_identity)
+            core_code_identities = []
             try:
                 for identity in extract_code_identities(text):
-                    if identity and identity not in code_identities:
-                        code_identities.append(identity)
+                    if identity and identity not in core_code_identities:
+                        core_code_identities.append(identity)
             except Exception:
                 pass
+            code_identities = merge_code_identities(
+                text,
+                code_detail.get("identity") or "",
+                core_code_identities,
+            )
 
             duplicate_identity = ""
             duplicate_code_key = ""

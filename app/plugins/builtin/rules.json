@@ -189,7 +189,10 @@
     "ttl_minutes": 20,
     "pending_seconds": 30,
     "max_candidates": 300,
-    "scope_regex": "^(?P<scope>.+?-(?:Register|Renew)_)(?P<suffix>.+)$"
+    "scope_regex": "^(?P<scope>.+?-(?:Register|Renew)_)(?P<suffix>.+)$",
+    "extract_patterns": [
+      "(?<![A-Za-z0-9_-])(?P<code>[^\\s`：:，,]+(?:-[^\\s`：:，,]+)*-\\d+-(?:Register|Renew)_[^\\s`]+?)(?=$|\\s|[，。！？？；：、）】]|[,.;:)\\]}>`~](?![A-Za-z0-9_-]))"
+    ]
   },
   "dedup": {
     "register_keywords": ["开放注册", "自由注册", "开放注册中", "注册开放", "开注", "开注中", "开放名额", "register", "renew"],

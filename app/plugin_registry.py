@@ -279,6 +279,27 @@ def validate_rules_data(rules: dict) -> None:
                 raise ValueError(f"code_identity.scope_regex 正则无效：{exc}") from exc
             if not {"scope", "suffix"}.issubset(groups):
                 raise ValueError("code_identity.scope_regex 必须包含 scope 和 suffix 命名组")
+        extract_patterns = code_identity.get("extract_patterns")
+        if extract_patterns is not None:
+            if not isinstance(extract_patterns, list):
+                raise ValueError("code_identity.extract_patterns 必须是数组")
+            for index, pattern in enumerate(extract_patterns):
+                _validate_regex(
+                    pattern,
+                    f"code_identity.extract_patterns.{index}",
+                    _regex_engine="re",
+                    flags=0,
+                )
+                try:
+                    groups = re.compile(str(pattern)).groupindex
+                except Exception as exc:
+                    raise ValueError(
+                        f"code_identity.extract_patterns.{index} 正则无效：{exc}"
+                    ) from exc
+                if "code" not in groups:
+                    raise ValueError(
+                        f"code_identity.extract_patterns.{index} 必须包含 code 命名组"
+                    )
 
     dedup = rules["dedup"]
     for key in ("lottery_id_pattern", "lottery_seed_pattern"):

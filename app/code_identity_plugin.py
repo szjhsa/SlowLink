@@ -38,6 +38,11 @@ def _config() -> dict[str, Any]:
                 len(mask_char) == 1
                 and {"scope", "suffix"}.issubset(scope_regex.groupindex)
             ):
+                extract_res = tuple(
+                    re.compile(str(pattern))
+                    for pattern in (raw.get("extract_patterns") or [])
+                    if isinstance(pattern, str) and pattern.strip()
+                )
                 config = {
                     "mask_char": mask_char,
                     "mask_mode": str(raw.get("mask_mode") or "any_length"),
@@ -47,12 +52,59 @@ def _config() -> dict[str, Any]:
                     "pending_seconds": max(1, int(raw.get("pending_seconds") or 30)),
                     "max_candidates": max(10, int(raw.get("max_candidates") or 300)),
                     "scope_regex": scope_regex,
+                    "extract_res": extract_res,
                 }
     except Exception:
         config = {}
 
     _CONFIG_CACHE.update({"ts": now, "config": config})
     return dict(config)
+
+
+def extract_code_values(text: str) -> list[str]:
+    config = _config()
+    if not config:
+        return []
+    values: list[str] = []
+    seen: set[str] = set()
+    for pattern in config.get("extract_res") or ():
+        for match in pattern.finditer(str(text or "")):
+            value = str(match.group("code") or "").strip()
+            if value and value not in seen:
+                seen.add(value)
+                values.append(value)
+    return values
+
+
+def merge_code_identities(
+    text: str,
+    analysis_identity: str,
+    core_identities: list[str],
+) -> list[str]:
+    plugin_values = extract_code_values(text)
+    merged = ["plugin_code:" + value for value in plugin_values]
+
+    def covered(value: str) -> bool:
+        if not value:
+            return False
+        return any(
+            value.endswith(plugin_value)
+            or (
+                plugin_value.split("*", 1)[0]
+                and value.endswith(plugin_value.split("*", 1)[0])
+            )
+            for plugin_value in plugin_values
+        )
+
+    for identity in [analysis_identity, *(core_identities or [])]:
+        identity = str(identity or "").strip()
+        if not identity:
+            continue
+        value = identity.split(":", 1)[1] if ":" in identity else identity
+        if covered(value) or identity in merged:
+            continue
+        merged.append(identity)
+    return merged
 
 
 def _code_value(identity: str) -> str:

@@ -70,6 +70,10 @@ class FakeRedis:
 
 
 def configure(plugin, redis, *, min_fixed_chars=6):
+    extract_pattern = re.compile(
+        r"(?<![A-Za-z0-9_-])(?P<code>[^\s`：:，,]+(?:-[^\s`：:，,]+)*-\d+-(?:Register|Renew)_[^\s`]+?)"
+        r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~](?![A-Za-z0-9_-]))"
+    )
     plugin.r = redis
     plugin._CONFIG_CACHE.update({
         "ts": time.time(),
@@ -82,6 +86,7 @@ def configure(plugin, redis, *, min_fixed_chars=6):
             "pending_seconds": 30,
             "max_candidates": 300,
             "scope_regex": re.compile(r"^(?P<scope>.+?-(?:Register|Renew)_)(?P<suffix>.+)$"),
+            "extract_res": (extract_pattern,),
         },
     })
 
@@ -109,6 +114,78 @@ class CodeIdentityPluginV110Tests(unittest.TestCase):
         )
         self.assertTrue(duplicate)
         self.assertIn("相同码特征重复", reason)
+
+    def test_multiple_codes_then_one_known_code_is_blocked(self):
+        redis = FakeRedis()
+        configure(code_identity_plugin, redis)
+        first_text = (
+            "码1：XYING-30-Register_sTUL**Vuvb\n"
+            "码2：WENJIAN-30-Register_abc**defg"
+        )
+        first_values = code_identity_plugin.extract_code_values(first_text)
+        self.assertEqual(first_values, [
+            "XYING-30-Register_sTUL**Vuvb",
+            "WENJIAN-30-Register_abc**defg",
+        ])
+
+        duplicate, _reason, claim = code_identity_plugin.claim_code_identities(
+            ["plugin_code:" + value for value in first_values]
+        )
+        self.assertFalse(duplicate)
+        code_identity_plugin.commit_code_identities(claim)
+
+        second_values = code_identity_plugin.extract_code_values(
+            "XYING-30-Register_sTUL51Vuvb"
+        )
+        duplicate, reason, _claim = code_identity_plugin.claim_code_identities(
+            ["plugin_code:" + value for value in second_values]
+        )
+        self.assertTrue(duplicate)
+        self.assertIn("相同码特征重复", reason)
+
+    def test_merge_replaces_truncated_core_identities_with_full_plugin_codes(self):
+        redis = FakeRedis()
+        configure(code_identity_plugin, redis)
+        text = (
+            "码1：XYING-30-Register_sTUL**Vuvb\n"
+            "码2：WENJIAN-30-Register_abc**defg"
+        )
+        merged = code_identity_plugin.merge_code_identities(
+            text,
+            "strong_register_renew:码1：XYING-30-Register_sTUL",
+            [
+                "strong_register_renew:码1：XYING-30-Register_sTUL",
+                "strong_register_renew:XYING-30-Register_sTUL",
+                "strong_register_renew:码2：WENJIAN-30-Register_abc",
+                "strong_register_renew:WENJIAN-30-Register_abc",
+            ],
+        )
+
+        self.assertEqual(merged, [
+            "plugin_code:XYING-30-Register_sTUL**Vuvb",
+            "plugin_code:WENJIAN-30-Register_abc**defg",
+        ])
+
+    def test_second_message_with_known_and_new_code_is_blocked(self):
+        redis = FakeRedis()
+        configure(code_identity_plugin, redis)
+        first = code_identity_plugin.extract_code_values(
+            "XYING-30-Register_sTUL**Vuvb"
+        )
+        duplicate, _reason, claim = code_identity_plugin.claim_code_identities(
+            ["plugin_code:" + value for value in first]
+        )
+        self.assertFalse(duplicate)
+        code_identity_plugin.commit_code_identities(claim)
+
+        second = code_identity_plugin.extract_code_values(
+            "XYING-30-Register_sTUL51Vuvb\nWENJIAN-30-Register_new**Code"
+        )
+        self.assertEqual(len(second), 2)
+        duplicate, _reason, _claim = code_identity_plugin.claim_code_identities(
+            ["plugin_code:" + value for value in second]
+        )
+        self.assertTrue(duplicate)
 
     def test_plain_code_then_masked_code_is_blocked(self):
         redis = FakeRedis()
