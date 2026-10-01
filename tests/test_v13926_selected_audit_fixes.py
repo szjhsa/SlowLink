@@ -25,7 +25,7 @@ class SelectedAuditFixesV13926Tests(unittest.TestCase):
         self.assertEqual(read(ROOT / "VERSION").strip(), EXPECTED_VERSION)
         self.assertIn(f'APP_VERSION = "{EXPECTED_VERSION}"', read(APP / "config.py"))
 
-    def test_template_conflict_does_not_leave_new_keys(self):
+    def test_template_conflict_keeps_exact_text_and_link_keys(self):
         dedup, client = load_dedup()
         dedup.check_and_mark(
             NO_SEED_MESSAGE,
@@ -48,7 +48,9 @@ class SelectedAuditFixesV13926Tests(unittest.TestCase):
             for key, value in client.values.items()
             if key.startswith("dedup:") and value == profile2["dedup_id"]
         ]
-        self.assertEqual(leftovers, [])
+        self.assertIn("dedup:" + profile2["dedup_id"], leftovers)
+        self.assertTrue(any(key.startswith("dedup:link:") for key in leftovers))
+        self.assertEqual(len(leftovers), 2)
 
     def test_x5_quantity_is_not_registered_as_code(self):
         code_rules, _saved = load_code_rules_with_fake_redis()

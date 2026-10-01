@@ -885,7 +885,15 @@ def check_and_mark(
                 and existing_id != dedup_id
             )
             if not explicit_id_conflict:
-                _release_new_keys(new_keys)
+                # Keep the exact text/link keys even when the event template
+                # already exists. Otherwise the next count/text variant can
+                # become a new "first" after the short template window expires.
+                new_template_keys = [
+                    key
+                    for key, is_new in zip(template_keys, template_new)
+                    if is_new
+                ]
+                _release_new_keys(new_template_keys)
                 reason = "同一抽奖的不同模板重复（10分钟内）"
                 _add_lottery_collision({
                     "identity": effective_template_identities[template_index],

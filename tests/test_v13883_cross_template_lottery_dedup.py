@@ -298,6 +298,37 @@ class CrossTemplateLotteryDedupV13883Tests(unittest.TestCase):
         self.assertTrue(second_duplicate)
         self.assertEqual(reason, "同一抽奖的不同模板重复（10分钟内）")
 
+    def test_blocked_template_variant_keeps_its_exact_text_dedup_key(self):
+        dedup, client = load_dedup()
+
+        first_duplicate, _reason, _profile = dedup.check_and_mark(
+            LEWA_MESSAGE_WITHOUT_REQUIREMENT,
+            "https://t.me/Lewa_movie/390202",
+            None,
+            "strict",
+            "乐蛙影视站-群组",
+        )
+        blocked_duplicate, _reason, _profile = dedup.check_and_mark(
+            LEWA_MESSAGE_WITH_REQUIREMENT,
+            "https://t.me/Lewa_movie/390205",
+            None,
+            "strict",
+            "乐蛙影视站-群组",
+        )
+        client.now += 601
+        repeated_variant_duplicate, reason, _profile = dedup.check_and_mark(
+            LEWA_MESSAGE_WITH_REQUIREMENT,
+            "https://t.me/Lewa_movie/390299",
+            None,
+            "strict",
+            "乐蛙影视站-群组",
+        )
+
+        self.assertFalse(first_duplicate)
+        self.assertTrue(blocked_duplicate)
+        self.assertTrue(repeated_variant_duplicate)
+        self.assertIn("相同文本内容重复", reason)
+
     def test_deadline_prize_or_passphrase_change_remains_a_distinct_lottery(self):
         dedup, _client = load_dedup()
         original = dedup.build_profile(LEWA_MESSAGE_WITHOUT_REQUIREMENT)
