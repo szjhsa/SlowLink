@@ -56,7 +56,7 @@ class SafeAuditFixesV13927Tests(unittest.TestCase):
         self.assertIn("未找到对应的去重记录", web)
         self.assertIn("if len(text) > 8192:", web)
         self.assertIn("r.ping()", web)
-        self.assertIn("_regex.compile(str(rule), _regex.I | _regex.M)", web)
+        self.assertIn("_regex.compile(part, _regex.I | _regex.M)", web)
         self.assertIn("migrate_known_regex_rules()", web)
         self.assertIn("只导入正则规则", template)
 

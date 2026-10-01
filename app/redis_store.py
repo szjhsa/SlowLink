@@ -21,7 +21,7 @@ _BATCH_BUFFER: dict[str, list] = {
     "counters": [],
 }
 _BATCH_LOCK = threading.Lock()
-_BATCH_FLUSHING = False
+_BATCH_FLUSH_LOCK = threading.Lock()
 _BATCH_THREAD_STARTED = False
 _BATCH_MAX_BUFFER = 1000
 _BATCH_FLUSH_INTERVAL = 0.5
@@ -318,14 +318,8 @@ def _write_records_now(key: str, records: list[tuple[str, int]]) -> None:
 
 
 def flush_batch_records(wait: bool = False) -> None:
-    global _BATCH_FLUSHING
-    if _BATCH_FLUSHING:
-        if wait:
-            while _BATCH_FLUSHING:
-                time.sleep(0.01)
-        else:
-            return
-    _BATCH_FLUSHING = True
+    if not _BATCH_FLUSH_LOCK.acquire(blocking=wait):
+        return
     pending: dict[str, list] = {}
     try:
         with _BATCH_LOCK:
@@ -354,7 +348,7 @@ def flush_batch_records(wait: bool = False) -> None:
                         del combined[: len(combined) - _BATCH_MAX_BUFFER]
                     _BATCH_BUFFER[key] = combined
     finally:
-        _BATCH_FLUSHING = False
+        _BATCH_FLUSH_LOCK.release()
 
 
 def push_event(kind: str, message: str, extra: dict | None = None, limit: int = 300) -> None:
@@ -646,14 +640,20 @@ def migrate_known_regex_rules() -> int:
     replacements = []
     try:
         for old, new in KNOWN_REGEX_RULE_MIGRATIONS.items():
-            if r.sismember("regex_rules", old):
-                replacements.append((old, new))
+            enabled = bool(r.sismember("regex_rules", old))
+            disabled = bool(r.sismember("regex_rules_disabled", old))
+            if enabled or disabled:
+                replacements.append((old, new, enabled, disabled))
         if not replacements:
             return 0
         pipe = r.pipeline()
-        for old, new in replacements:
+        for old, new, enabled, disabled in replacements:
             pipe.srem("regex_rules", old)
-            pipe.sadd("regex_rules", new)
+            pipe.srem("regex_rules_disabled", old)
+            if enabled:
+                pipe.sadd("regex_rules", new)
+            if disabled:
+                pipe.sadd("regex_rules_disabled", new)
         pipe.execute()
         return len(replacements)
     except Exception:

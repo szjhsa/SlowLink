@@ -149,6 +149,8 @@ def list_plugins() -> list[dict]:
         if not root.exists():
             continue
         for child in sorted(root.iterdir()):
+            if child.name.startswith((".", "_")):
+                continue
             if child.is_dir() and (child / "plugin.json").exists() and child.name not in seen:
                 seen.add(child.name)
                 item = read_json(child / "plugin.json")
@@ -386,6 +388,11 @@ def _safe_extract(zf: zipfile.ZipFile, target: Path) -> str:
         if normalized.endswith("/") or not normalized:
             continue
         parts = [p for p in normalized.split("/") if p not in {"", "."}]
+        if (
+            any(part in {"__pycache__", "__MACOSX"} for part in parts)
+            or normalized.lower().endswith((".pyc", ".pyo"))
+        ):
+            continue
         safe = (
             parts[:len(prefix_parts)] == prefix_parts
             and ".." not in parts
@@ -466,7 +473,12 @@ def uninstall_plugin(plugin_id: str) -> bool:
         return False
     if plugin_id != DEFAULT_PLUGIN and not str(target.resolve()).startswith(str(UPLOAD_ROOT.resolve())):
         return False
-    shutil.rmtree(target, ignore_errors=True)
+    try:
+        shutil.rmtree(target)
+    except Exception:
+        return False
+    if target.exists():
+        return False
     invalidate(plugin_id)
     return True
 
@@ -475,11 +487,9 @@ def activate_plugin(plugin_id: str) -> None:
     plugin_id = str(plugin_id or "").strip()
     if plugin_id:
         validate_plugin(plugin_id)
-    try:
-        from redis_store import set_value
-        set_value(ACTIVE_PLUGIN_KEY, plugin_id)
-    except Exception:
-        pass
+    from redis_store import set_value
+
+    set_value(ACTIVE_PLUGIN_KEY, plugin_id)
     invalidate()
 
 

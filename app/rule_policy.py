@@ -42,7 +42,20 @@ def default_policy(rule_type: str, *, require_available: bool = True) -> dict[st
     key = str(rule_type or "").strip().lower()
     if require_available and not is_type_available(key):
         raise ValueError("当前插件未提供该规则类型")
-    config = get_rule_type_config(key)
+    try:
+        config = get_rule_type_config(key)
+    except ValueError:
+        if require_available:
+            raise
+        config = {
+            "id": key,
+            "label": key,
+            "strategy": "",
+            "aliases": [],
+            "dedup_strategy": "normalized_text",
+            "ttl_minutes": 20,
+            "forward": True,
+        }
     merged = dict(config)
     merged.update(_plugin_defaults(key))
     strategy = str(merged.get("strategy") or config.get("strategy") or "").strip().lower()
@@ -71,6 +84,8 @@ def default_policy(rule_type: str, *, require_available: bool = True) -> dict[st
 def normalize_policy(value: dict[str, Any] | None, rule_type: str = "") -> dict[str, Any]:
     raw = dict(value or {})
     selected_type = str(raw.get("rule_type") or rule_type or "").strip().lower()
+    if not selected_type:
+        return {}
     try:
         base = default_policy(selected_type, require_available=False)
     except ValueError:

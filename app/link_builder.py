@@ -1,5 +1,6 @@
 import re
 
+from chat_ids import dialog_id_variants, ordered_dialog_id_variants
 from telethon.tl.types import PeerChannel
 
 
@@ -31,29 +32,31 @@ def split_dialog_values(raw: str) -> list[str]:
     return out
 
 
-def dialog_id_variants(value) -> set[str]:
-    """Return normalized variants for a Telegram chat/channel id.
-
-    Telethon entity.id for channels is usually positive 368..., while user-facing
-    dialog id is often -100368.... We match both forms.
-    """
-    keys: set[str] = set()
-    if value is None:
-        return keys
-    s = str(value).strip().lower()
-    if not s:
-        return keys
-    keys.add(s)
-    keys.add(s.lstrip("-"))
-    if s.startswith("-100") and s[4:].isdigit():
-        keys.add(s[4:])
-        keys.add("-" + s[4:])
-    elif s.lstrip("-").isdigit():
-        n = s.lstrip("-")
-        keys.add(n)
-        keys.add("-" + n)
-        keys.add("-100" + n)
-    return keys
+def _entity_signature(entity) -> tuple[str, str, str] | None:
+    if entity is None:
+        return None
+    entity_id = getattr(entity, "id", None)
+    if entity_id is None:
+        entity_id = getattr(entity, "channel_id", None)
+    if entity_id is None:
+        entity_id = getattr(entity, "chat_id", None)
+    if entity_id is None:
+        entity_id = getattr(entity, "user_id", None)
+    access_hash = getattr(entity, "access_hash", None)
+    type_name = type(entity).__name__.lower()
+    if "channel" in type_name:
+        kind = "channel"
+    elif "chat" in type_name:
+        kind = "chat"
+    elif "user" in type_name:
+        kind = "user"
+    else:
+        kind = type_name
+    return (
+        kind,
+        "" if entity_id is None else str(entity_id),
+        "" if access_hash is None else str(access_hash),
+    )
 
 
 def get_chat_keys(chat) -> set[str]:
@@ -105,6 +108,7 @@ def build_entity_cache(dialogs) -> dict[str, object]:
     reuses it for every send.
     """
     cache: dict[str, object] = {}
+    ambiguous: set[str] = set()
     for dialog in dialogs or []:
         entity = getattr(dialog, "entity", None)
         if entity is None:
@@ -114,9 +118,20 @@ def build_entity_cache(dialogs) -> dict[str, object]:
         did = getattr(dialog, "id", None)
         if did is not None:
             keys |= dialog_id_variants(did)
+        signature = _entity_signature(entity)
         for k in keys:
-            if k:
-                cache[str(k).strip().lower()] = entity
+            key = str(k or "").strip().lower()
+            if not key or key in ambiguous:
+                continue
+            if key in cache:
+                existing = cache.get(key)
+                if existing is None:
+                    continue
+                if _entity_signature(existing) != signature:
+                    cache[key] = None
+                    ambiguous.add(key)
+                continue
+            cache[key] = entity
     return cache
 
 
@@ -144,6 +159,7 @@ def _entity_index_payload(entity) -> dict:
 def build_entity_index(dialogs) -> dict[str, dict]:
     """Persist a compact, JSON-safe mapping for fast listener startup."""
     index: dict[str, dict] = {}
+    ambiguous: set[str] = set()
     for dialog in dialogs or []:
         entity = getattr(dialog, "entity", None)
         if entity is None:
@@ -157,8 +173,15 @@ def build_entity_index(dialogs) -> dict[str, dict]:
         if did is not None:
             keys |= dialog_id_variants(did)
         for key in keys:
-            if key:
-                index[str(key).strip().lower()] = payload
+            normalized = str(key or "").strip().lower()
+            if not normalized or normalized in ambiguous:
+                continue
+            if normalized in index:
+                if index[normalized] != payload:
+                    index.pop(normalized, None)
+                    ambiguous.add(normalized)
+                continue
+            index[normalized] = payload
     return index
 
 
@@ -196,17 +219,27 @@ async def resolve_entity(client, value: str, cache: dict | None = None, refresh:
         raise ValueError("会话为空")
 
     # First try warm cache. This makes normal forwarding fast.
-    wanted = {x.lower() for x in dialog_id_variants(value)}
+    wanted: list[str] = []
+    seen: set[str] = set()
+
+    def add_wanted(item) -> None:
+        key = str(item or "").strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            wanted.append(key)
+
+    for item in ordered_dialog_id_variants(value):
+        add_wanted(item)
     if value.startswith("@"):
-        wanted.add(value.lower())
-        wanted.add(value[1:].lower())
+        add_wanted(value.lower())
+        add_wanted(value[1:].lower())
     elif not value.startswith("-") and not value.isdigit():
-        wanted.add(value.lower())
-        wanted.add("@" + value.lower())
+        add_wanted(value.lower())
+        add_wanted("@" + value.lower())
 
     if cache:
         for k in wanted:
-            if k in cache:
+            if k in cache and cache[k] is not None:
                 return cache[k]
 
     # Public username. This is stable and usually quick.
@@ -218,7 +251,7 @@ async def resolve_entity(client, value: str, cache: dict | None = None, refresh:
         dialogs = await client.get_dialogs(limit=None)
         local_cache = build_entity_cache(dialogs)
         for k in wanted:
-            if k in local_cache:
+            if k in local_cache and local_cache[k] is not None:
                 return local_cache[k]
 
     # Last fallback: try PeerChannel with the internal id. This only works when the

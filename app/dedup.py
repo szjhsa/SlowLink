@@ -7,8 +7,6 @@ import time
 import unicodedata
 from typing import Any
 
-import regex as _regex
-
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
@@ -302,7 +300,23 @@ def build_profile(
         default=None,
     )
     if isinstance(result, dict):
-        return result
+        profile = dict(result)
+        dedup_id = str(profile.get("dedup_id") or "").strip()
+        if dedup_id:
+            profile["dedup_id"] = dedup_id
+            profile.setdefault("activity", "other")
+            profile.setdefault("ttl_policy", "normal")
+            profile.setdefault("core", "")
+            profile.setdefault("message_link", message_link)
+            profile.setdefault("dedup_strategy", "normalized_text")
+            profile.setdefault("correlation_keys", [])
+            profile.setdefault("correlation_mode", "off")
+            profile.setdefault("correlation_key_prefix", "dedup:correlation:")
+            profile.setdefault("collision_list", "dedup:collisions")
+            profile.setdefault("strict_identity_conflict", False)
+            profile.setdefault("identity_conflict_prefix", "")
+            profile.setdefault("reason_labels", {})
+            return profile
 
     normalized = normalize_for_text_dedup(text)
     text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()

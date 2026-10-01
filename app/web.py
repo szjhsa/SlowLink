@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import hmac
 import json
 import secrets
 import threading
@@ -17,6 +18,7 @@ except Exception:
     _CSRF_AVAILABLE = False
 
 import telegram_login
+from chat_ids import dialog_id_variants
 from dedup import build_profile, clear_ttl_cache, list_dedup_recent, release_dedup, ttl_minutes_for_profile
 from bot_runner import manager
 from config import APP_VERSION
@@ -224,12 +226,7 @@ def _variants_for_dialog(d: dict) -> set[str]:
         variants.add("@" + username.lstrip("@"))
     did = str(d.get("id", "")).strip().lower()
     if did:
-        variants.add(did)
-        variants.add(did.lstrip("-"))
-        if did.startswith("-100"):
-            variants.add(did[4:])
-        elif did.lstrip("-").isdigit():
-            variants.add("-100" + did.lstrip("-"))
+        variants |= dialog_id_variants(did)
     return {x for x in variants if x}
 
 
@@ -543,7 +540,10 @@ def login():
             return render_template("login.html", error="尝试次数过多，请 5 分钟后再试")
         password = request.form.get("password", "")
         salt = get("admin_password_salt", "") or ""
-        if password_hash(password, salt) == get("admin_password_hash"):
+        if hmac.compare_digest(
+            password_hash(password, salt),
+            get("admin_password_hash") or "",
+        ):
             session["logged_in"] = True
             delete("login_fail_count")
             delete("login_lock_until")
@@ -573,7 +573,10 @@ def change_password():
     new_password = request.form.get("new_password", "")
     new_password2 = request.form.get("new_password2", "")
     salt = get("admin_password_salt", "") or ""
-    if password_hash(old_password, salt) != get("admin_password_hash"):
+    if not hmac.compare_digest(
+        password_hash(old_password, salt),
+        get("admin_password_hash") or "",
+    ):
         return done("原密码错误", "error", ok=False)
     if len(new_password) < 6:
         return done("新密码至少 6 位", "error", ok=False)
@@ -968,6 +971,8 @@ def add_regex():
     value = request.form.get("value", "").strip()
     if not value:
         return done("内容不能为空", "error", ok=False)
+    if len(value) > 8192:
+        return done("正则规则过长", "error", ok=False)
     try:
         for rule in value.split(";;"):
             _regex.compile(rule, _regex.I | _regex.M)
@@ -1103,9 +1108,11 @@ def add_code_rule_route():
     group = request.form.get("group", "0").strip() or "0"
     fast = request.form.get("fast") == "1"
     trigger = request.form.get("trigger") == "1"
-    strict_context = request.form.get("strict_context") != "0"
+    strict_context = request.form.get("strict_context") == "1"
     if not pattern:
         return done("码识别正则不能为空", "error", ok=False)
+    if len(pattern) > 8192:
+        return done("码识别正则过长", "error", ok=False)
     try:
         add_code_rule(name, pattern, group, fast, trigger, strict_context)
         return done("码识别规则已添加。默认仅辅助去重，不会单独触发转发。", "success")
@@ -1132,6 +1139,8 @@ def update_code_rule_route():
         }
         if not patch["pattern"]:
             return done("码识别正则不能为空", "error", ok=False)
+        if len(patch["pattern"]) > 8192:
+            return done("码识别正则过长", "error", ok=False)
         if update_code_rule(idx, patch):
             return done("码识别规则已保存", "success")
         return done("保存失败：规则不存在", "error", ok=False)
@@ -1464,17 +1473,27 @@ def import_config():
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError("备份文件格式不正确")
-        for rule in payload.get("regex_rules") or []:
-            try:
-                _regex.compile(str(rule), _regex.I | _regex.M)
-            except Exception as e:
-                raise ValueError(f"正则规则无效：{str(rule)[:80]} - {e}")
-        for rule in payload.get("code_rules") or []:
-            pattern = str((rule or {}).get("pattern") or "")
-            try:
-                _regex.compile(pattern, _regex.I | _regex.M | _regex.S)
-            except Exception as e:
-                raise ValueError(f"码识别规则无效：{pattern[:80]} - {e}")
+        for source_key in ("regex_rules", "disabled_regex_rules"):
+            for rule in payload.get(source_key) or []:
+                raw_rule = str(rule)
+                if len(raw_rule) > 8192:
+                    raise ValueError("正则规则过长")
+                for part in raw_rule.split(";;"):
+                    if not part.strip():
+                        continue
+                    try:
+                        _regex.compile(part, _regex.I | _regex.M)
+                    except Exception as e:
+                        raise ValueError(f"正则规则无效：{part[:80]} - {e}")
+        for source_key in ("code_rules", "code_rules_plugin", "code_rules_pure"):
+            for rule in payload.get(source_key) or []:
+                pattern = str((rule or {}).get("pattern") or "")
+                if len(pattern) > 8192:
+                    raise ValueError("码识别规则过长")
+                try:
+                    _regex.compile(pattern, _regex.I | _regex.M | _regex.S)
+                except Exception as e:
+                    raise ValueError(f"码识别规则无效：{pattern[:80]} - {e}")
 
         def _take_snapshot() -> dict:
             snap = {}
@@ -1601,16 +1620,32 @@ def import_config():
             migrate_known_regex_rules()
         if mode != "rules_only":
             d = payload.get("dedup") or {}
-            mapping = {"other_minutes": "dedup_other_minutes"}
+            if not isinstance(d, dict):
+                d = {}
+            mapping = {
+                "enabled": "dedup_enabled",
+                "mode": "dedup_mode",
+                "other_minutes": "dedup_other_minutes",
+            }
             for item in _ui_field_defs(_plugin_ui()):
                 key = str(item.get("key") or "").strip()
                 if key.startswith("dedup_"):
                     mapping.setdefault(key[len("dedup_"):], key)
             changed_dedup = False
             for src, dst in mapping.items():
-                if src in d:
-                    set_value(dst, d[src])
-                    changed_dedup = True
+                if src not in d:
+                    continue
+                value = d[src]
+                if src == "enabled":
+                    value = "1" if str(value).strip().lower() in {"1", "true", "yes", "on"} else "0"
+                elif src == "mode":
+                    value = str(value or "strict").strip().lower()
+                    if value not in {"strict", "balanced", "loose"}:
+                        value = "strict"
+                else:
+                    value = str(value)
+                set_value(dst, value)
+                changed_dedup = True
             if changed_dedup:
                 clear_ttl_cache()
                 imported.append("去重设置")
