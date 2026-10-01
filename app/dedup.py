@@ -604,6 +604,10 @@ def normalize_for_text_dedup(text: str) -> str:
             continue
         if re.search(r"(?:当前)?参与人数[：:\s]*\d+", line):
             continue
+        if re.search(r"(?:已参与|当前参与|参与人数)\s*[：:]?\s*\d+", line):
+            continue
+        if re.fullmatch(r"\d*\s*人已登记", line):
+            continue
         if re.search(r"消耗\s+[\d.]+\s+碎片", line):
             continue
         if re.search(r"(?:满|满员|已满|满额)\s*\d*人?", line):

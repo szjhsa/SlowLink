@@ -233,6 +233,36 @@ class LotteryTemplateFallbackV13881Tests(unittest.TestCase):
         self.assertFalse(first_duplicate)
         self.assertFalse(second_duplicate)
 
+    def test_current_participant_count_changes_do_not_refresh_lottery_text(self):
+        dedup, client = load_dedup()
+        first_text = """🎉 抽奖活动已开始
+
+🎁 奖品内容：
+MVision 兑换码 × 10 份
+
+👥 当前参与：299
+人已登记
+"""
+        second_text = first_text.replace("当前参与：299", "当前参与：306")
+
+        first_profile = dedup.build_profile(first_text)
+        second_profile = dedup.build_profile(second_text)
+        self.assertEqual(first_profile["text_hash"], second_profile["text_hash"])
+        self.assertNotIn("当前参与", dedup.normalize_for_text_dedup(first_text))
+        self.assertNotIn("人已登记", dedup.normalize_for_text_dedup(first_text))
+
+        first_duplicate, _reason, _profile = dedup.check_and_mark(
+            first_text, "https://t.me/roctech/1", None, "strict", "XP Chat"
+        )
+        client.advance(601)
+        second_duplicate, reason, _profile = dedup.check_and_mark(
+            second_text, "https://t.me/roctech/2", None, "strict", "XP Chat"
+        )
+
+        self.assertFalse(first_duplicate)
+        self.assertTrue(second_duplicate)
+        self.assertIn("相同文本内容重复", reason)
+
 
 if __name__ == "__main__":
     unittest.main()
