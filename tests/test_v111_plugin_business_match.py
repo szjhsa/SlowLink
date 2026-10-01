@@ -9,6 +9,19 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 
 
+def make_fake_store():
+    fake_store = types.ModuleType("redis_store")
+    fake_store.get = lambda key, default=None: default
+    fake_store.get_json = lambda key, default=None: default
+    fake_store.set_json = lambda *args, **kwargs: None
+    fake_store.smembers = lambda *args, **kwargs: set()
+    fake_store.sha = lambda value: str(abs(hash(value)))
+    fake_store.format_time = lambda *args, **kwargs: "2026-01-01 00:00:00"
+    fake_store.log_line = lambda *args, **kwargs: None
+    fake_store.r = types.SimpleNamespace()
+    return fake_store
+
+
 def load_matcher(plugin_match=None, regex_rules=None):
     fake_store = types.ModuleType("redis_store")
     fake_store.smembers = lambda key: set(regex_rules or []) if key == "regex_rules" else set()
@@ -52,15 +65,7 @@ def load_matcher(plugin_match=None, regex_rules=None):
 
 class PluginBusinessMatchV111Tests(unittest.TestCase):
     def test_plugin_business_rules_compile_and_match_expected_types(self):
-        fake_store = types.ModuleType("redis_store")
-        fake_store.get = lambda key, default=None: default
-        fake_store.get_json = lambda key, default=None: default
-        fake_store.set_json = lambda *args, **kwargs: None
-        fake_store.smembers = lambda *args, **kwargs: set()
-        fake_store.sha = lambda value: str(abs(hash(value)))
-        fake_store.format_time = lambda *args, **kwargs: "2026-01-01 00:00:00"
-        fake_store.log_line = lambda *args, **kwargs: None
-        fake_store.r = types.SimpleNamespace()
+        fake_store = make_fake_store()
         old_store = sys.modules.get("redis_store")
         sys.modules["redis_store"] = fake_store
         sys.path.insert(0, str(APP))
@@ -85,6 +90,36 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
                     self.assertIsInstance(result, dict)
                     self.assertTrue(result.get("matched"))
                     self.assertEqual(result.get("rule_type"), expected_type)
+        finally:
+            try:
+                sys.path.remove(str(APP))
+            except ValueError:
+                pass
+            if old_store is None:
+                sys.modules.pop("redis_store", None)
+            else:
+                sys.modules["redis_store"] = old_store
+
+    def test_generic_invite_field_does_not_auto_trigger(self):
+        fake_store = make_fake_store()
+        old_store = sys.modules.get("redis_store")
+        sys.modules["redis_store"] = fake_store
+        sys.path.insert(0, str(APP))
+        try:
+            from plugin_runtime import call_hook
+
+            text = (
+                "快来看看你的个人 AI 智能体 Muse 。在加入后的 48 小时内"
+                "通过“设置”兑现我的邀请码，我们就能分别获得 10 亿个 Muse 词元。\n\n"
+                "邀请码：Q11HYT\n"
+                "https://muse.ai/join"
+            )
+            result = call_hook(
+                "match_plugin_event",
+                {"text": text, "normalized": text, "compact": text},
+                default=None,
+            )
+            self.assertIsNone(result)
         finally:
             try:
                 sys.path.remove(str(APP))

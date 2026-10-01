@@ -502,7 +502,13 @@ def match_plugin_event(payload):
                 }
 
     detail = _code_detail()
-    if isinstance(detail, dict) and detail.get("code") and detail.get("safe", True):
+    identity = str(detail.get("identity") or "") if isinstance(detail, dict) else ""
+    if (
+        isinstance(detail, dict)
+        and detail.get("code")
+        and detail.get("safe", True)
+        and identity.startswith("strong_register_renew:")
+    ):
         return {
             "matched": True,
             "rule": "plugin:" + str(detail.get("name") or "码识别"),
