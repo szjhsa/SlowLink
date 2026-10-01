@@ -17,7 +17,7 @@ sys.path.insert(0, "/app")
 from config import APP_VERSION  # noqa: E402
 from matcher import invalidate_rule_cache  # noqa: E402
 from plugin_runtime import call_hook  # noqa: E402
-from redis_store import r  # noqa: E402
+from redis_store import format_time, r  # noqa: E402
 from rule_policy import policy_key  # noqa: E402
 
 
@@ -74,7 +74,7 @@ def main() -> int:
         return 0
 
     backup = {
-        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "created_at": format_time(),
         "app_version": APP_VERSION,
         "active_rules": active_rules,
         "disabled_rules": disabled_rules,
@@ -104,7 +104,7 @@ def main() -> int:
     invalidate_rule_cache()
 
     event = {
-        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "time": format_time(),
         "kind": "info",
         "message": (
             f"已迁移 {len(remove_rules)} 条业务规则到插件；"

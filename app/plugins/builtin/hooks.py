@@ -37,6 +37,10 @@ BUSINESS_MATCH_RULES = [
 
 _BUSINESS_MATCH_CACHE = {"signature": None, "compiled": []}
 
+LEGACY_BUSINESS_MATCH_PATTERNS = [
+    r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_(?:(?a:[A-Za-z0-9]{10})|(?=[^\s*`]*[\u3400-\u9fff])(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))[^\s*`]+?)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))",
+]
+
 
 LOTTERY_ID_LINE_RE = re.compile(
     r"(?m)^[^\n]*(?:抽奖\s*ID|lottery\s*id)\s*[:：]\s*\S+",
@@ -515,7 +519,7 @@ def get_business_match_patterns(payload=None):
         str(rule.get("pattern") or "")
         for rule in BUSINESS_MATCH_RULES
         if str(rule.get("pattern") or "")
-    ]
+    ] + list(LEGACY_BUSINESS_MATCH_PATTERNS)
 
 
 def _line_pattern(line: str) -> str:
