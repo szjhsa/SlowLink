@@ -12,11 +12,11 @@ from plugin_runtime import load_plugin_module
 
 
 BUSINESS_MATCH_RULES = [
-    {"name": "Whitelist 完整码", "rule_type": "code", "ascii": True, "pattern": r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_(?:(?a:[A-Za-z0-9]{10})|(?=[^\s*`]*[\u3400-\u9fff])(?=(?:[^A-Za-z0-9\s*`]*(?a:[A-Za-z0-9])){10}[^A-Za-z0-9\s*`]*(?=$|\s))[^\s*`]+?)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
-    {"name": "Register/Renew 连字符码", "rule_type": "code", "pattern": r"(?<![A-Za-z0-9-])[A-Za-z0-9\u3400-\u9fff]{1,24}-(?:Register|Renew)-[A-Za-z0-9\u3400-\u9fff]{1,24}(?:-[A-Za-z0-9\u3400-\u9fff]{1,24}){1,4}(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
-    {"name": "CK 完整码", "rule_type": "code", "pattern": r"(?<![A-Za-z0-9])CK[^\s]{12}(?=$|\s|[，。！？？；：、】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
-    {"name": "网页 invite 码", "rule_type": "code", "pattern": r"(?i)https?://[^\s/]+/invite/(?:[a-z0-9]{6}|[a-z0-9]{8})(?![a-z0-9])"},
-    {"name": "Register/Renew 完整码", "rule_type": "code", "pattern": r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[^\s*`]+$"},
+    {"name": "Whitelist 完整码", "rule_type": "code", "ascii": True, "requires_code": True, "pattern": r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_(?:(?a:[A-Za-z0-9]{10})|(?=[^\s*`]*[\u3400-\u9fff])(?=(?:[^A-Za-z0-9\s*`]*(?a:[A-Za-z0-9])){10}[^A-Za-z0-9\s*`]*(?=$|\s))[^\s*`]+?)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
+    {"name": "Register/Renew 连字符码", "rule_type": "code", "requires_code": True, "pattern": r"(?<![A-Za-z0-9-])[A-Za-z0-9\u3400-\u9fff]{1,24}-(?:Register|Renew)-[A-Za-z0-9\u3400-\u9fff]{1,24}(?:-[A-Za-z0-9\u3400-\u9fff]{1,24}){1,4}(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
+    {"name": "CK 完整码", "rule_type": "code", "requires_code": True, "pattern": r"(?<![A-Za-z0-9])CK[^\s]{12}(?=$|\s|[，。！？？；：、】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
+    {"name": "网页 invite 码", "rule_type": "code", "requires_code": True, "pattern": r"(?i)https?://[^\s/]+/invite/(?:[a-z0-9]{6}|[a-z0-9]{8})(?![a-z0-9])"},
+    {"name": "Register/Renew 完整码", "rule_type": "code", "requires_code": True, "pattern": r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[^\s*`]+$"},
     {"name": "注册公告", "rule_type": "keyword", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
     {"name": "开注状态", "rule_type": "keyword", "pattern": r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)(?:True|ON|开启|开放|1|已开启)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"},
     {"name": "开放注册中", "rule_type": "keyword", "pattern": r"📝 开放注册中"},
@@ -482,6 +482,7 @@ def match_plugin_event(payload):
         except Exception:
             return {}
 
+    detail = _code_detail()
     for rule, compiled in _compiled_business_match_rules():
         for candidate in (original, normalized, compact):
             try:
@@ -491,7 +492,8 @@ def match_plugin_event(payload):
             except Exception:
                 continue
             if match:
-                detail = _code_detail()
+                if rule.get("requires_code") and not str(detail.get("code") or ""):
+                    continue
                 return {
                     "matched": True,
                     "rule": "plugin:" + str(rule.get("name") or "event"),
@@ -501,7 +503,6 @@ def match_plugin_event(payload):
                     "code_detail": detail,
                 }
 
-    detail = _code_detail()
     identity = str(detail.get("identity") or "") if isinstance(detail, dict) else ""
     if (
         isinstance(detail, dict)
