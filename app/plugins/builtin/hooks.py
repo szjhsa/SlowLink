@@ -11,6 +11,33 @@ import regex as _regex
 from plugin_runtime import load_plugin_module
 
 
+BUSINESS_MATCH_RULES = [
+    {"name": "Whitelist 完整码", "rule_type": "code", "ascii": True, "pattern": r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_(?:(?a:[A-Za-z0-9]{10})|(?=[^\s*`]*[\u3400-\u9fff])(?=(?:[^A-Za-z0-9\s*`]*(?a:[A-Za-z0-9])){10}[^A-Za-z0-9\s*`]*(?=$|\s))[^\s*`]+?)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
+    {"name": "Register/Renew 连字符码", "rule_type": "code", "pattern": r"(?<![A-Za-z0-9-])[A-Za-z0-9\u3400-\u9fff]{1,24}-(?:Register|Renew)-[A-Za-z0-9\u3400-\u9fff]{1,24}(?:-[A-Za-z0-9\u3400-\u9fff]{1,24}){1,4}(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
+    {"name": "CK 完整码", "rule_type": "code", "pattern": r"(?<![A-Za-z0-9])CK[^\s]{12}(?=$|\s|[，。！？？；：、】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
+    {"name": "网页 invite 码", "rule_type": "code", "pattern": r"(?i)https?://[^\s/]+/invite/(?:[a-z0-9]{6}|[a-z0-9]{8})(?![a-z0-9])"},
+    {"name": "Register/Renew 完整码", "rule_type": "code", "pattern": r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[^\s*`]+$"},
+    {"name": "注册公告", "rule_type": "keyword", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
+    {"name": "开注状态", "rule_type": "keyword", "pattern": r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)(?:True|ON|开启|开放|1|已开启)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"},
+    {"name": "开放注册中", "rule_type": "keyword", "pattern": r"📝 开放注册中"},
+    {"name": "全局抽奖", "rule_type": "lottery", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|刮刮乐|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
+    {"name": "抽奖活动已开始", "rule_type": "lottery", "pattern": r"(?m)^抽奖活动已开始！?$"},
+    {"name": "抽奖开始啦", "rule_type": "lottery", "pattern": r"🎁 抽奖开始啦"},
+    {"name": "奖品内容行", "rule_type": "lottery", "pattern": r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"},
+    {"name": "通用抽奖活动", "rule_type": "lottery", "pattern": r"发起了通用抽奖活动"},
+    {"name": "祝参与者好运", "rule_type": "lottery", "pattern": r"🍀 祝所有参与者好运！"},
+    {"name": "新抽奖创建", "rule_type": "lottery", "pattern": r"新的抽奖已经创建[ \t\r\n\u200b\u200c\u200d\ufeff]*抽奖信息"},
+    {"name": "抽奖活动标记", "rule_type": "lottery", "pattern": r"🎉 抽奖活动已开始!"},
+    {"name": "生成码提示", "rule_type": "code", "pattern": r"已为您生成了"},
+    {"name": "新兑换码提示", "rule_type": "code", "pattern": r"新的兑换码已生成"},
+    {"name": "生成提示", "rule_type": "code", "pattern": r"🎁 已生成"},
+    {"name": "小虎揍生成提示", "rule_type": "code", "pattern": r"为小虎揍们生成了"},
+    {"name": "虎揍快来", "rule_type": "keyword", "pattern": r"虎揍快来"},
+]
+
+_BUSINESS_MATCH_CACHE = {"signature": None, "compiled": []}
+
+
 LOTTERY_ID_LINE_RE = re.compile(
     r"(?m)^[^\n]*(?:抽奖\s*ID|lottery\s*id)\s*[:：]\s*\S+",
     re.I,
@@ -406,6 +433,89 @@ def explicit_registration_status(payload):
     }:
         return "closed"
     return ""
+
+
+def _compiled_business_match_rules():
+    signature = tuple(
+        (
+            str(rule.get("name") or ""),
+            str(rule.get("pattern") or ""),
+            str(rule.get("rule_type") or ""),
+        )
+        for rule in BUSINESS_MATCH_RULES
+    )
+    if signature != _BUSINESS_MATCH_CACHE["signature"]:
+        compiled = []
+        for rule in BUSINESS_MATCH_RULES:
+            pattern = str(rule.get("pattern") or "").strip()
+            if not pattern:
+                continue
+            try:
+                flags = _regex.I | _regex.M
+                if rule.get("ascii"):
+                    flags |= _regex.A
+                compiled.append((rule, _regex.compile(pattern, flags)))
+            except _regex.error:
+                continue
+        _BUSINESS_MATCH_CACHE.update({"signature": signature, "compiled": compiled})
+    return _BUSINESS_MATCH_CACHE["compiled"]
+
+
+def match_plugin_event(payload):
+    if not isinstance(payload, dict):
+        return None
+    original = str(payload.get("text") or "")
+    normalized = str(payload.get("normalized") or original)
+    compact = str(payload.get("compact") or re.sub(r"\s+", "", normalized))
+
+    def _code_detail():
+        try:
+            return (
+                _code_impl().extract_code_detail(normalized)
+                or _code_impl().extract_code_detail(compact)
+                or {}
+            )
+        except Exception:
+            return {}
+
+    for rule, compiled in _compiled_business_match_rules():
+        for candidate in (original, normalized, compact):
+            try:
+                match = compiled.search(candidate, timeout=0.05)
+            except TimeoutError:
+                continue
+            except Exception:
+                continue
+            if match:
+                detail = _code_detail()
+                return {
+                    "matched": True,
+                    "rule": "plugin:" + str(rule.get("name") or "event"),
+                    "rule_type": str(rule.get("rule_type") or "keyword").strip().lower(),
+                    "candidate": match.group(0)[:200],
+                    "pattern": str(rule.get("pattern") or ""),
+                    "code_detail": detail,
+                }
+
+    detail = _code_detail()
+    if isinstance(detail, dict) and detail.get("code") and detail.get("safe", True):
+        return {
+            "matched": True,
+            "rule": "plugin:" + str(detail.get("name") or "码识别"),
+            "rule_type": "code",
+            "candidate": str(detail.get("code") or "")[:200],
+            "pattern": str(detail.get("pattern") or ""),
+            "code_detail": detail,
+        }
+    return None
+
+
+def get_business_match_patterns(payload=None):
+    return [
+        str(rule.get("pattern") or "")
+        for rule in BUSINESS_MATCH_RULES
+        if str(rule.get("pattern") or "")
+    ]
 
 
 def _line_pattern(line: str) -> str:

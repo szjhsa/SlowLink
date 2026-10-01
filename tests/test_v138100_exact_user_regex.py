@@ -37,6 +37,7 @@ class ExactUserRegexV138100Tests(unittest.TestCase):
 
     def test_halfwidth_punctuation_does_not_match_fullwidth_original_text(self):
         matcher = load_matcher(regex_rules={"🍀 祝所有参与者好运!"})
+        matcher.call_hook = lambda name, payload=None, default=None: default
 
         self.assertFalse(matcher.match_rule_details(LOTTERY_TEXT)["matched"])
 

@@ -120,7 +120,7 @@ SAFE_GENERATED_REGISTER_RENEW_PATTERN = (
 WHITELIST_SUFFIX_PATTERN = r"(?a:[A-Za-z0-9]{10})"
 WHITELIST_GUESS_SUFFIX_PATTERN = (
     r"(?=[^\s*`]*[\u3400-\u9fff])"
-    r"(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))"
+    r"(?=(?:[^A-Za-z0-9\s*`]*(?a:[A-Za-z0-9])){10}[^A-Za-z0-9\s*`]*(?=$|\s))"
     + REGISTER_SUFFIX_PATTERN
 )
 SAFE_WHITELIST_PATTERN = (
@@ -265,8 +265,8 @@ def _strong_codes_enabled() -> bool:
 
 REGISTER_RENEW_RE = re.compile(SAFE_REGISTER_RENEW_PATTERN, re.I | re.M)
 HYPHEN_REGISTER_RENEW_RE = re.compile(HYPHEN_REGISTER_RENEW_PATTERN, re.I | re.M)
-WHITELIST_RE = re.compile(SAFE_WHITELIST_PATTERN, re.I | re.M)
-GUESS_WHITELIST_RE = re.compile(SAFE_GUESS_WHITELIST_PATTERN, re.I | re.M)
+WHITELIST_RE = _regex.compile(SAFE_WHITELIST_PATTERN, _regex.A | _regex.I | _regex.M)
+GUESS_WHITELIST_RE = _regex.compile(SAFE_GUESS_WHITELIST_PATTERN, _regex.A | _regex.I | _regex.M)
 MARKDOWN_REGISTER_RENEW_RE = re.compile(
     r"(?:^|[\s:：，,])([^\s*`-]+(?:-[^\s*`-]+)*-\d+(?:-[^\s*`-]+)*-(?:Register|Renew)_)(?:[*`~]+)?("
     + OBFUSCATED_REGISTER_SUFFIX_PATTERN

@@ -53,7 +53,7 @@ def inspect_with_empty_main_rules(text: str) -> dict:
 
 
 class WhitelistCodeV13888Tests(unittest.TestCase):
-    def test_exact_code_is_identified_but_does_not_trigger_without_main_rule(self):
+    def test_exact_code_is_identified_and_plugin_triggers_without_main_rule(self):
         result = inspect_with_empty_main_rules(SAMPLE)
 
         self.assertEqual(result["detail"].get("code"), SAMPLE)
@@ -62,7 +62,10 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
             "strong_whitelist:" + SAMPLE,
         )
         self.assertFalse(result["trigger"].get("can_trigger"))
-        self.assertFalse(result["analysis"].get("matched"))
+        self.assertTrue(result["analysis"].get("matched"))
+        self.assertTrue(
+            str(result["analysis"].get("rule") or "").startswith("plugin:")
+        )
 
     def test_matching_main_regex_triggers_and_attaches_code_identity(self):
         result = inspect_message(SAMPLE, (WHITELIST_MAIN_RULE,))
@@ -138,7 +141,7 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
             encoding="utf-8-sig"
         )
 
-        self.assertIn("Whitelist 十位完整码需先命中正则", source)
+        self.assertIn("插件会识别 Register / Renew、Whitelist", source)
 
     def test_version_sources_are_consistent(self):
         version = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()

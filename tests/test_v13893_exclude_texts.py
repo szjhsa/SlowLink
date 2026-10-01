@@ -26,6 +26,7 @@ def load_matcher(exclude_texts=None, regex_rules=None, disabled_regex_rules=None
     }
     old_modules = {name: sys.modules.get(name) for name in replacements}
     sys.modules.update(replacements)
+    sys.path.insert(0, str(APP))
     try:
         spec = importlib.util.spec_from_file_location("matcher_v13893", APP / "matcher.py")
         module = importlib.util.module_from_spec(spec)
@@ -38,6 +39,10 @@ def load_matcher(exclude_texts=None, regex_rules=None, disabled_regex_rules=None
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = old
+        try:
+            sys.path.remove(str(APP))
+        except ValueError:
+            pass
 
 
 class ExcludeTextsV13893Tests(unittest.TestCase):

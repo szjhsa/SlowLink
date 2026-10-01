@@ -279,7 +279,7 @@
     "code_tab_title": "码识别",
     "code_mode_active": "插件自动识别",
     "code_mode_pure": "纯净自定义",
-    "code_active_hint": "完整 Register / Renew 强格式可直接触发；Whitelist 十位完整码需先命中正则，再用于准确去重。",
+  "code_active_hint": "插件会识别 Register / Renew、Whitelist、网页 invite 等完整码并直接触发；主系统只负责转发和通用去重。",
     "code_pure_hint": "纯净模式只使用你添加的码规则。",
     "code_advanced_hint_active": "用于添加特殊码格式。",
     "code_advanced_hint_pure": "添加你的码识别格式；勾选“允许单独触发”后可直接转发。",

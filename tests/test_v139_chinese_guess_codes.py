@@ -167,7 +167,7 @@ class ChineseGuessCodeV139Tests(unittest.TestCase):
                 self.assertEqual(detail.get("identity"), "strong_register_renew:" + code)
                 self.assertTrue(result.get("matched"))
 
-    def test_whitelist_guess_codes_are_extracted_but_still_need_a_regex(self):
+    def test_whitelist_guess_codes_are_extracted_and_plugin_triggers(self):
         code_rules, matcher_without_rule = load_modules()
 
         for code in WHITELIST_CODES:
@@ -177,7 +177,8 @@ class ChineseGuessCodeV139Tests(unittest.TestCase):
 
                 self.assertEqual(detail.get("code"), code)
                 self.assertEqual(detail.get("identity"), "strong_whitelist:" + code)
-                self.assertFalse(result.get("matched"))
+                self.assertTrue(result.get("matched"))
+                self.assertTrue(str(result.get("rule") or "").startswith("plugin:"))
 
     def test_known_system_rules_migrate_to_guess_code_rules(self):
         client = FakeRedisClient({CURRENT_REGISTER_RULE, CURRENT_WHITELIST_RULE})

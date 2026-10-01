@@ -95,15 +95,17 @@ class InvitePathCodesV1393Tests(unittest.TestCase):
                 self.assertEqual(detail.get("identity"), "url_invite:" + code)
                 self.assertFalse(detail.get("can_trigger"))
 
-    def test_invite_path_code_never_triggers_without_a_user_regex(self):
+    def test_plugin_invite_rule_triggers_without_a_user_regex(self):
         code_rules, matcher = load_matcher_modules()
 
         for url in (INVITE_URLS[0], EIGHT_CHARACTER_INVITE_URLS[0]):
             with self.subTest(url=url):
                 self.assertEqual(code_rules.extract_trigger_code_detail(url), {})
-                self.assertFalse(matcher.analyze_message(url).get("matched"))
+                result = matcher.analyze_message(url)
+                self.assertTrue(result.get("matched"))
+                self.assertTrue(str(result.get("rule") or "").startswith("plugin:"))
 
-    def test_configured_user_regex_is_the_only_forward_trigger(self):
+    def test_configured_user_regex_still_takes_precedence(self):
         _code_rules, matcher = load_matcher_modules(regex_rules={INVITE_REGEX})
 
         result = matcher.analyze_message(EIGHT_CHARACTER_INVITE_URLS[2])

@@ -6,7 +6,7 @@ from redis_store import smembers
 from code_rules import extract_code_detail, extract_trigger_code_detail
 from plugin_registry import builtin_section
 from plugin_runtime import call_hook
-from rule_policy import get_rule_policy, policy_is_available
+from rule_policy import default_policy, get_rule_policy, policy_is_available
 
 _RULE_CACHE = {"ts": 0.0, "raw": None, "regexes": []}
 _EXCLUDE_TEXT_CACHE = {"ts": 0.0, "raw": None, "items": []}
@@ -226,6 +226,42 @@ def _is_closed_register_notice(normalized: str, compact: str) -> bool:
     return _guard_flags(normalized, compact)[1]
 
 
+def _plugin_event_match(original: str, normalized: str, compact: str) -> dict | None:
+    """Ask the active plugin whether this is one of its business events."""
+    result = call_hook(
+        "match_plugin_event",
+        {
+            "text": original,
+            "normalized": normalized,
+            "compact": compact,
+            "config": builtin_section("matcher", {}) or {},
+        },
+        default=None,
+    )
+    if not isinstance(result, dict) or not result.get("matched"):
+        return None
+
+    rule = str(result.get("rule") or "plugin:event")
+    rule_type = str(result.get("rule_type") or "").strip().lower()
+    policy = result.get("policy")
+    if not isinstance(policy, dict):
+        policy = {}
+        if rule_type:
+            try:
+                policy = default_policy(rule_type)
+            except Exception:
+                policy = {}
+    return {
+        "matched": True,
+        "rule": rule,
+        "rule_type": rule_type,
+        "rule_policy": policy,
+        "candidate": str(result.get("candidate") or ""),
+        "pattern": str(result.get("pattern") or ""),
+        "code_detail": result.get("code_detail") if isinstance(result.get("code_detail"), dict) else {},
+    }
+
+
 # ---- main matching (optimized) ----
 
 def analyze_message(text: str) -> dict:
@@ -293,6 +329,23 @@ def analyze_message(text: str) -> dict:
                 **_rule_policy_fields(raw),
             }
 
+    plugin_match = _plugin_event_match(original, normalized, compact)
+    if plugin_match:
+        code_detail = plugin_match.get("code_detail") or extract_code_detail(normalized) or extract_code_detail(compact)
+        return {
+            "matched": True,
+            "rule": plugin_match["rule"],
+            "candidate": plugin_match["candidate"],
+            "code_detail": code_detail or {},
+            "normalized": normalized,
+            "compact": compact,
+            "usage_notice": False,
+            "closed_register_notice": False,
+            "registration_success_notice": False,
+            "rule_type": plugin_match["rule_type"],
+            "rule_policy": plugin_match["rule_policy"],
+        }
+
     trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
     if trigger_detail and trigger_detail.get("can_trigger"):
         return {
@@ -353,6 +406,10 @@ def match_rules(text: str) -> tuple[bool, str]:
     for raw, cre in regexes:
         if _safe_search(cre, text):
             return True, raw
+
+    plugin_match = _plugin_event_match(text, normalized, compact)
+    if plugin_match:
+        return True, plugin_match["rule"]
 
     # Code-trigger fallback
     code_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
@@ -443,6 +500,19 @@ def match_rule_details(text: str) -> dict:
                 "code_note": code_detail.get("safe_reason", "") if code_detail else "",
                 "original": original, "normalized": normalized, "compact": compact,
             }
+
+    plugin_match = _plugin_event_match(original, normalized, compact)
+    if plugin_match:
+        plugin_code_detail = plugin_match.get("code_detail") or code_detail
+        return {
+            "matched": True, "rule": plugin_match["rule"],
+            "candidate": plugin_match["candidate"] or "插件规则",
+            "usage_notice": False, "closed_register_notice": False,
+            "code_detected": bool(plugin_code_detail),
+            "code_rule": plugin_code_detail.get("name", "") if plugin_code_detail else "",
+            "code_note": plugin_code_detail.get("safe_reason", "") if plugin_code_detail else "",
+            "original": original, "normalized": normalized, "compact": compact,
+        }
 
     # Code trigger fallback
     trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)

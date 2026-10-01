@@ -60,7 +60,7 @@ class ObfuscatedRegisterTriggerV13879Tests(unittest.TestCase):
         self.assertTrue(result["trigger"].get("can_trigger"))
         self.assertEqual(result["trigger"].get("code"), EXPECTED_CODE)
         self.assertTrue(result["analysis"].get("matched"))
-        self.assertTrue(str(result["analysis"].get("rule") or "").startswith("code_trigger:"))
+        self.assertTrue(str(result["analysis"].get("rule") or "").startswith("plugin:"))
 
     def test_usage_notice_with_obfuscated_code_remains_blocked(self):
         text = "注册码使用 - Roman 使用了 GuaiCum-30-Register_ZlB5*cqm*u"
