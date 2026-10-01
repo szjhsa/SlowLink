@@ -20,7 +20,8 @@ BUSINESS_MATCH_RULES = [
     {"name": "注册公告", "rule_type": "keyword", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
     {"name": "开注状态", "rule_type": "keyword", "pattern": r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)(?:True|ON|开启|开放|1|已开启)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"},
     {"name": "开放注册中", "rule_type": "keyword", "pattern": r"📝 开放注册中"},
-    {"name": "全局抽奖", "rule_type": "lottery", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|刮刮乐|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
+    {"name": "全局抽奖", "rule_type": "lottery", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
+    {"name": "刮刮乐活动", "rule_type": "lottery", "requires_lottery_context": True, "pattern": r"(?m)^[^\n]*刮刮乐[^\n]*$"},
     {"name": "抽奖活动已开始", "rule_type": "lottery", "pattern": r"(?m)^抽奖活动已开始！?$"},
     {"name": "抽奖开始啦", "rule_type": "lottery", "pattern": r"🎁 抽奖开始啦"},
     {"name": "奖品内容行", "rule_type": "lottery", "pattern": r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"},
@@ -36,6 +37,20 @@ BUSINESS_MATCH_RULES = [
 ]
 
 _BUSINESS_MATCH_CACHE = {"signature": None, "compiled": []}
+
+LOTTERY_EVENT_CONTEXT_RE = _regex.compile(
+    r"(?m)^[ \t]*(?:"
+    r"(?:🎁\s*)?(?:奖品内容|奖品)\s*(?=[:：|｜]|$)"
+    r"|(?:🎰\s*)?(?:开奖模式|开奖方式|开奖时间|开奖日期)\s*[:：|｜]"
+    r"|(?:⏰\s*)?(?:截止时间|开始时间)\s*[:：|｜]"
+    r"|(?:🔑\s*)?参与(?:关键词|要求)\s*[:：|｜]"
+    r"|(?:🆔\s*)?(?:抽奖\s*ID|lottery\s*id)\s*[:：|｜]"
+    r"|随机种子(?:哈希)?\s*[:：|｜]"
+    r"|抽奖条件\s*[:：|｜]"
+    r"|(?:📣\s*)?发布群组\s*[:：|｜]"
+    r")",
+    _regex.I,
+)
 
 LEGACY_BUSINESS_MATCH_PATTERNS = [
     r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_(?:(?a:[A-Za-z0-9]{10})|(?=[^\s*`]*[\u3400-\u9fff])(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))[^\s*`]+?)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))",
@@ -445,6 +460,7 @@ def _compiled_business_match_rules():
             str(rule.get("name") or ""),
             str(rule.get("pattern") or ""),
             str(rule.get("rule_type") or ""),
+            bool(rule.get("requires_lottery_context")),
         )
         for rule in BUSINESS_MATCH_RULES
     )
@@ -493,6 +509,11 @@ def match_plugin_event(payload):
                 continue
             if match:
                 if rule.get("requires_code") and not str(detail.get("code") or ""):
+                    continue
+                if (
+                    rule.get("requires_lottery_context")
+                    and not LOTTERY_EVENT_CONTEXT_RE.search(candidate)
+                ):
                     continue
                 return {
                     "matched": True,

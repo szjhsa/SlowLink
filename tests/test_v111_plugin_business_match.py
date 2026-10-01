@@ -133,6 +133,36 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
 
         self.assertIsNone(plugin_match(text))
 
+    def test_group_instruction_with_scratch_keyword_does_not_auto_trigger(self):
+        group_instruction = (
+            "🎮 本群玩法(在群里直接发口令即可)\n\n"
+            "🎫 刮刮乐 —— 来张彩票\n"
+            "📖 发「比大小规则」「刮刮乐规则」这样的口令看详细玩法\n"
+            "🎰 抽奖、竞猜、竞拍看群里的活动卡片"
+        )
+
+        for text in (
+            group_instruction,
+            "刮刮乐必中体验卡",
+            "我是刮刮乐这个",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(plugin_match(text))
+
+    def test_scratch_lottery_with_event_fields_still_matches(self):
+        text = (
+            "🎉 刮刮乐\n\n"
+            "🎁 奖品：\n"
+            "  ▸ 10元代金券 x1\n\n"
+            "⏰ 截止时间：2026-10-01 20:00"
+        )
+
+        result = plugin_match(text)
+
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result.get("matched"))
+        self.assertEqual(result.get("rule_type"), "lottery")
+
     def test_code_format_rules_require_safe_code_context(self):
         for text in (
             "登录 CKWIS3PD97M3F6",
