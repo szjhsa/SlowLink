@@ -1,5 +1,6 @@
 import re
 import json
+import hashlib
 import unittest
 from pathlib import Path
 
@@ -29,6 +30,39 @@ class CaseDedupPanelsAndTestAlignmentV13924Tests(unittest.TestCase):
 
         self.assertEqual(normalized, "strong_register_renew:nonay-30-register_hepfji5vd6")
 
+    def test_url_code_identity_is_normalized_without_losing_scheme(self):
+        code_rules, _saved = load_modules()
+        identity = (
+            "strong_register_renew:http://t.me/saturday_lite_bot"
+            "?start=SaturDay.Lite-30-Register_cGfV0h5c8q"
+        )
+
+        normalized = code_rules.normalize_code_identity(identity)
+
+        self.assertEqual(normalized, identity.lower())
+        self.assertNotEqual(normalized, identity)
+
+    def test_identity_lock_and_content_lock_use_separate_namespaces(self):
+        code_rules, _saved = load_modules()
+        storage = read(APP / "plugins" / "builtin" / "storage_impl.py")
+        identity = (
+            "strong_register_renew:http://t.me/saturday_lite_bot"
+            "?start=saturday.lite-30-register_abcdefghij"
+        )
+        normalized = code_rules.normalize_code_identity(identity)
+
+        identity_key = "dedup:identity:" + hashlib.sha256(
+            normalized.encode("utf-8")
+        ).hexdigest()
+        content_key = "dedup:code:" + hashlib.sha256(
+            identity.encode("utf-8")
+        ).hexdigest()
+
+        self.assertEqual(normalized, identity)
+        self.assertNotEqual(identity_key, content_key)
+        self.assertIn('"identity_key_prefix": "dedup:identity:"', storage)
+        self.assertIn('"dedup:identity:*"', storage)
+
     def test_bot_runner_uses_normalized_identity_and_full_log(self):
         source = read(APP / "bot_runner.py")
 
@@ -36,7 +70,7 @@ class CaseDedupPanelsAndTestAlignmentV13924Tests(unittest.TestCase):
         self.assertIn("call_hook(", source)
         self.assertIn("identity_key = identity_key_prefix + sha(normalized_identity)", source)
         storage = read(APP / "plugins" / "builtin" / "storage_impl.py")
-        self.assertIn('"identity_key_prefix": "dedup:code:"', storage)
+        self.assertIn('"identity_key_prefix": "dedup:identity:"', storage)
         self.assertIn("duplicate_identity[:160]", source)
         self.assertNotIn("duplicate_identity[:16]", source)
 

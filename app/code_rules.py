@@ -235,7 +235,7 @@ def normalize_code_identity(identity: str) -> str:
         )
         if isinstance(result, str):
             return result
-    prefix, sep, value = (identity or "").rpartition(":")
+    prefix, sep, value = (identity or "").partition(":")
     if sep and prefix in {
         "strong_register_renew",
         "strong_whitelist",
