@@ -17,7 +17,7 @@ class DuplicateCodeLoggingV138602Tests(unittest.TestCase):
         end = bot_runner.index("return", start)
         branch = bot_runner[start:end]
 
-        self.assertIn('"duplicate_code"', branch)
+        self.assertIn('"duplicate_identity"', branch)
         self.assertIn('"status": message', branch)
         self.assertIn('event_message = f"{message}：{link}" if link else message', branch)
         self.assertIn('push_event("info", event_message)', branch)

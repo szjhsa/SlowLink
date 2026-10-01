@@ -40,7 +40,7 @@ class PerfDiagnosticsV13859Tests(unittest.TestCase):
         self.assertIn('"telegram_delay_sec": perf.get("telegram_delay_sec", 0)', bot_runner)
         self.assertIn('"slow": self._is_slow_perf(perf)', bot_runner)
         self.assertIn('self._record_perf_event(source_name, rule, link, "sent"', bot_runner)
-        self.assertIn('self._record_perf_event(source_name, rule, link, "duplicate_code"', bot_runner)
+        self.assertIn('self._record_perf_event(source_name, rule, link, "duplicate_identity"', bot_runner)
         self.assertIn('self._record_perf_event(source_name, rule, link, "duplicate"', bot_runner)
         self.assertIn('self._record_perf_event(source_name, rule, link, "send_failed"', bot_runner)
         self.assertIn('except Exception:', bot_runner, "perf diagnostics must be best-effort")

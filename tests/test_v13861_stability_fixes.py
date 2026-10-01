@@ -29,19 +29,20 @@ class StabilityFixesV13861Tests(unittest.TestCase):
         )
         self.assertIsNotNone(helper)
         helper_body = helper.group(0)
-        self.assertIn("r.delete(code_key)", helper_body)
+        self.assertIn("r.delete(identity_key)", helper_body)
         self.assertIn("release_dedup(dedup_id)", helper_body)
 
         start = bot_runner.index("if failed and not sent:")
         end = bot_runner.index('push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))', start)
         failed_branch = bot_runner[start:end]
-        self.assertIn("self._release_pending_dedup(reserved_code_keys, dedup_profile)", failed_branch)
+        self.assertIn("self._release_pending_dedup(reserved_identity_keys, dedup_profile)", failed_branch)
 
-    def test_code_level_dedup_uses_code_minutes_setting(self):
+    def test_identity_level_dedup_uses_plugin_declared_ttl_setting(self):
         bot_runner = read(APP / "bot_runner.py")
-        self.assertIn('pipe.get("dedup_code_minutes")', bot_runner)
-        self.assertIn("enabled, mode, other_minutes, code_minutes", bot_runner)
-        self.assertIn("code_ttl = max(60, effective_code_minutes * 60)", bot_runner)
+        storage = read(APP / "plugins" / "builtin" / "storage_impl.py")
+        self.assertIn('storage_config.get("identity_ttl_key")', bot_runner)
+        self.assertIn("identity_ttl = max(60, effective_identity_minutes * 60)", bot_runner)
+        self.assertIn('"identity_ttl_key": "dedup_code_minutes"', storage)
 
     def test_admin_changes_clear_listener_runtime_cache_immediately(self):
         web = read(APP / "web.py")

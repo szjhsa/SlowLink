@@ -21,13 +21,19 @@ from link_builder import (
     build_entity_cache,
 )
 from matcher import analyze_message, get_text
-from code_rules import extract_code_identities, normalize_code_identity
 from redis_store import add_fail, add_hit, add_perf_event, format_time, get, get_json, log_line, push_event, r, set_json, set_value, sha, smembers
+
+try:
+    from redis_store import get_plugin_storage_config
+except ImportError:
+    def get_plugin_storage_config() -> dict:
+        return {}
 import json as _json
 from telegram_session_lock import SESSION_LOCK
 from plugin_registry import active_plugin_id as _plugin_active_id
 from plugin_registry import builtin_value as _plugin_builtin_value
-from rule_policy import should_run_code_dedup
+from plugin_runtime import call_hook
+from rule_policy import should_run_identity_dedup
 
 
 TELEGRAM_DELAY_HIGH_SECONDS = 30
@@ -112,25 +118,31 @@ class BotManager:
 
     def _cached_dedup_settings(self, ttl: float = 30.0) -> tuple[bool, str, int, int]:
         now = time.time()
-        ts, enabled, mode, other_minutes, code_minutes = self._dedup_settings
+        ts, enabled, mode, other_minutes, identity_minutes = self._dedup_settings
         if now - ts <= ttl:
-            return enabled, mode, other_minutes, code_minutes
+            return enabled, mode, other_minutes, identity_minutes
+        storage_config = get_plugin_storage_config()
+        identity_key = str(storage_config.get("identity_ttl_key") or "")
+        try:
+            identity_default = int(storage_config.get("identity_ttl_default") or 20)
+        except Exception:
+            identity_default = 20
         pipe = r.pipeline()
         pipe.get("dedup_enabled")
         pipe.get("dedup_mode")
         pipe.get("dedup_other_minutes")
-        pipe.get("dedup_code_minutes")
-        raw_enabled, raw_mode, raw_other, raw_code = pipe.execute()
+        pipe.get(identity_key or "dedup_identity_minutes")
+        raw_enabled, raw_mode, raw_other, raw_identity = pipe.execute()
         enabled = (raw_enabled or "1") == "1"
         mode = raw_mode if raw_mode in {"strict", "balanced", "loose"} else "strict"
         try: other_minutes = int(raw_other or 20)
         except Exception: other_minutes = 20
-        try: code_minutes = int(raw_code or 20)
-        except Exception: code_minutes = 20
+        try: identity_minutes = int(raw_identity or identity_default)
+        except Exception: identity_minutes = identity_default
         if not _plugin_active_id():
-            code_minutes = other_minutes
-        self._dedup_settings = (now, enabled, mode, other_minutes, code_minutes)
-        return enabled, mode, other_minutes, code_minutes
+            identity_minutes = other_minutes
+        self._dedup_settings = (now, enabled, mode, other_minutes, identity_minutes)
+        return enabled, mode, other_minutes, identity_minutes
 
     def clear_runtime_cache(self):
         self._set_cache.clear()
@@ -273,30 +285,30 @@ class BotManager:
         if LOG_VERBOSE:
             push_event(kind, message, extra)
 
-    def _release_pending_dedup(self, code_keys=(), dedup_profile: dict | None = None) -> None:
+    def _release_pending_dedup(self, identity_keys=(), dedup_profile: dict | None = None) -> None:
         try:
-            if isinstance(code_keys, str):
-                code_keys = [code_keys] if code_keys else []
-            for code_key in code_keys or []:
-                r.delete(code_key)
+            if isinstance(identity_keys, str):
+                identity_keys = [identity_keys] if identity_keys else []
+            for identity_key in identity_keys or []:
+                r.delete(identity_key)
             dedup_id = str((dedup_profile or {}).get("dedup_id") or "")
             if dedup_id:
                 release_dedup(dedup_id)
         except Exception:
             pass
 
-    def _remember_pending_duplicate(self, code_key: str, event, meta: dict) -> None:
-        if not code_key:
+    def _remember_pending_duplicate(self, identity_key: str, event, meta: dict) -> None:
+        if not identity_key:
             return
-        events = self._pending_duplicate_events.setdefault(code_key, [])
+        events = self._pending_duplicate_events.setdefault(identity_key, [])
         if len(events) < 50:
             events.append((event, dict(meta)))
 
-    def _requeue_pending_duplicates(self, code_keys=()) -> None:
-        if isinstance(code_keys, str):
-            code_keys = [code_keys] if code_keys else []
-        for code_key in code_keys or []:
-            for event, meta in self._pending_duplicate_events.pop(code_key, []):
+    def _requeue_pending_duplicates(self, identity_keys=()) -> None:
+        if isinstance(identity_keys, str):
+            identity_keys = [identity_keys] if identity_keys else []
+        for identity_key in identity_keys or []:
+            for event, meta in self._pending_duplicate_events.pop(identity_key, []):
                 meta = dict(meta)
                 meta["enqueue_ts"] = time.time()
                 meta["event"] = event
@@ -306,11 +318,11 @@ class BotManager:
                     except asyncio.QueueFull:
                         pass
 
-    def _clear_pending_duplicates(self, code_keys=()) -> None:
-        if isinstance(code_keys, str):
-            code_keys = [code_keys] if code_keys else []
-        for code_key in code_keys or []:
-            self._pending_duplicate_events.pop(code_key, None)
+    def _clear_pending_duplicates(self, identity_keys=()) -> None:
+        if isinstance(identity_keys, str):
+            identity_keys = [identity_keys] if identity_keys else []
+        for identity_key in identity_keys or []:
+            self._pending_duplicate_events.pop(identity_key, None)
 
     def is_running(self) -> bool:
         return bool(self.thread and self.thread.is_alive())
@@ -547,7 +559,7 @@ class BotManager:
             # Never do heavy matching/sending inside Telethon's update callback.
             # Put the event plus receive timestamp into an internal queue.
             # V1.30: this lets us separate Telegram push delay from internal processing time.
-            # V1.35.9: Register/Renew/lottery messages go to priority queue.
+            # V1.35.9: plugin-matched priority messages go to the fast queue.
             try:
                 receive_ts = time.time()
                 self._last_message_time = receive_ts
@@ -852,7 +864,7 @@ class BotManager:
             "telegram_delay_sec": round(telegram_delay_sec, 3),
             "queue_type": queue_type,
         }
-        reserved_code_keys = []
+        reserved_identity_keys = []
         dedup_profile = None
         try:
             try:
@@ -916,62 +928,75 @@ class BotManager:
             except Exception:
                 _evt_msg2 = None
             link = build_message_link(chat, _evt_msg2, self._cached_str("public_link_domain")) if _evt_msg2 else ""
-            dedup_enabled, mode, _dedup_other, code_minutes = self._cached_dedup_settings()
+            dedup_enabled, mode, _dedup_other, identity_minutes = self._cached_dedup_settings()
+            storage_config = get_plugin_storage_config()
+            identity_key_prefix = str(
+                storage_config.get("identity_key_prefix") or "dedup:identity:"
+            )
 
-            # Layer 0: same invite code already seen -> block (even if text differs)
-            core_code_identities = []
+            # Layer 0: same plugin identity already seen -> block (even if text differs)
+            hook_identities = []
             try:
-                for identity in extract_code_identities(text):
-                    if identity and identity not in core_code_identities:
-                        core_code_identities.append(identity)
+                for identity in call_hook(
+                    "extract_dedup_identities",
+                    {"text": text},
+                    default=[],
+                ):
+                    if identity and identity not in hook_identities:
+                        hook_identities.append(identity)
             except Exception:
                 pass
-            code_identities = []
-            for candidate in [code_detail.get("identity") or "", *core_code_identities]:
+            identity_values = []
+            for candidate in [code_detail.get("identity") or "", *hook_identities]:
                 candidate = str(candidate or "").strip()
-                if candidate and candidate not in code_identities:
-                    code_identities.append(candidate)
+                if candidate and candidate not in identity_values:
+                    identity_values.append(candidate)
 
             duplicate_identity = ""
-            duplicate_code_key = ""
-            effective_code_minutes = code_minutes
-            if should_run_code_dedup(rule_policy):
+            duplicate_identity_key = ""
+            effective_identity_minutes = identity_minutes
+            if should_run_identity_dedup(rule_policy):
                 try:
-                    effective_code_minutes = max(
-                        0, int(rule_policy.get("ttl_minutes", code_minutes))
+                    effective_identity_minutes = max(
+                        0, int(rule_policy.get("ttl_minutes", identity_minutes))
                     )
                 except Exception:
-                    effective_code_minutes = code_minutes
-            code_dedup_enabled = (
+                    effective_identity_minutes = identity_minutes
+            identity_dedup_enabled = (
                 dedup_enabled
-                and effective_code_minutes > 0
-                and should_run_code_dedup(rule_policy)
+                and effective_identity_minutes > 0
+                and should_run_identity_dedup(rule_policy)
             )
-            if code_identities and code_dedup_enabled:
-                code_ttl = max(60, effective_code_minutes * 60)
-                for identity in code_identities:
-                    normalized_identity = normalize_code_identity(identity)
-                    code_key = "dedup:code:" + sha(normalized_identity)
-                    is_new = r.set(code_key, "1", ex=code_ttl, nx=True)
+            if identity_values and identity_dedup_enabled:
+                identity_ttl = max(60, effective_identity_minutes * 60)
+                for identity in identity_values:
+                    normalized_identity = call_hook(
+                        "normalize_dedup_identity",
+                        {"identity": identity},
+                        default=str(identity).lower(),
+                    )
+                    normalized_identity = str(normalized_identity or identity)
+                    identity_key = identity_key_prefix + sha(normalized_identity)
+                    is_new = r.set(identity_key, "1", ex=identity_ttl, nx=True)
                     if not is_new:
                         duplicate_identity = normalized_identity
-                        duplicate_code_key = code_key
+                        duplicate_identity_key = identity_key
                         break
-                    reserved_code_keys.append(code_key)
+                    reserved_identity_keys.append(identity_key)
             if duplicate_identity:
-                self._remember_pending_duplicate(duplicate_code_key, event, {
+                self._remember_pending_duplicate(duplicate_identity_key, event, {
                     "event": event,
                     "receive_ts": receive_ts,
                     "enqueue_ts": enqueue_ts,
                     "message_ts": message_ts,
                     "queue_type": "priority",
                 })
-                self._release_pending_dedup(reserved_code_keys)
+                self._release_pending_dedup(reserved_identity_keys)
                 elapsed = time.monotonic() - t0
                 perf["total_ms"] = int(elapsed * 1000)
-                message = f"重复跳过：相同邀请码已转发（{duplicate_identity[:160]}），内部耗时 {elapsed:.2f}s"
+                message = f"重复跳过：相同转发身份已存在（{duplicate_identity[:160]}），内部耗时 {elapsed:.2f}s"
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": message, "perf": perf})
-                self._record_perf_event(source_name, rule, link, "duplicate_code", perf, {"code": duplicate_identity[:160]})
+                self._record_perf_event(source_name, rule, link, "duplicate_identity", perf, {"identity": duplicate_identity[:160]})
                 event_message = f"{message}：{link}" if link else message
                 push_event("info", event_message)
                 return
@@ -984,12 +1009,12 @@ class BotManager:
                     mode,
                     source_name,
                     policy=rule_policy,
-                    code_identities=code_identities,
+                    identities=identity_values,
                 )
                 perf["pre_dedup_ms"] = int((time.monotonic() - t0) * 1000)
                 if duplicate:
-                    self._release_pending_dedup(reserved_code_keys)
-                    self._requeue_pending_duplicates(reserved_code_keys)
+                    self._release_pending_dedup(reserved_identity_keys)
+                    self._requeue_pending_duplicates(reserved_identity_keys)
                     elapsed = time.monotonic() - t0
                     perf["total_ms"] = int(elapsed * 1000)
                     add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": f"重复跳过：{reason}；耗时 {elapsed:.2f}s", "perf": perf})
@@ -1034,14 +1059,14 @@ class BotManager:
             send_ts = time.time()
             perf["total_ms"] = int(elapsed * 1000)
             perf["send_time"] = format_time(send_ts)
-            code_label = ""
+            identity_label = ""
             if code_detail:
-                code_label = f"，码规则：{code_detail.get('name')}"
-            # Code-level dedup already marked atomically above
+                identity_label = f"，识别规则：{code_detail.get('name')}"
+            # Identity-level dedup already marked atomically above
 
             if sent:
                 self._flow_counters["forwarded"] += 1
-                self._clear_pending_duplicates(reserved_code_keys)
+                self._clear_pending_duplicates(reserved_identity_keys)
                 status = "已转发：" + ", ".join(sent) + f"；内部耗时 {elapsed:.2f}s"
                 if telegram_delay_sec >= 2:
                     status += f"；Telegram推送延迟 {telegram_delay_sec:.1f}s"
@@ -1050,30 +1075,30 @@ class BotManager:
                 if qsize_at_start:
                     status += f"；队列开始 {qsize_at_start}"
                 if code_detail:
-                    status += f"；完整码：{code_detail.get('code','')}"
+                    status += f"；识别身份：{code_detail.get('code','')}"
                 if elapsed >= 2:
                     status += "；慢转发"
-                add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": status, "perf": perf, "code": code_detail.get('code','') if code_detail else '', "message_time": perf.get("message_time"), "receive_time": perf.get("receive_time"), "send_time": perf.get("send_time"), "telegram_delay_sec": round(telegram_delay_sec, 3), "internal_total_ms": perf.get("total_ms")})
+                add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": status, "perf": perf, "identity": code_detail.get('code','') if code_detail else '', "message_time": perf.get("message_time"), "receive_time": perf.get("receive_time"), "send_time": perf.get("send_time"), "telegram_delay_sec": round(telegram_delay_sec, 3), "internal_total_ms": perf.get("total_ms")})
                 self._record_perf_event(source_name, rule, link, "sent", perf, {"sent_count": len(sent), "failed_count": len(failed)})
                 push_event("success", f"命中并转发：{link}，内部耗时 {elapsed:.2f}s，Telegram延迟 {telegram_delay_sec:.1f}s")
                 if elapsed >= 2:
-                    add_fail({"stage": "slow_forward", "error": f"内部慢转发 {elapsed:.2f}s，队列开始={qsize_at_start}，queue_wait={queue_wait_ms}ms，match={perf.get('match_ms',0)}ms，pre_dedup={perf.get('pre_dedup_ms',0)}ms，send_start={perf.get('before_send_ms',0)}ms{code_label}", "link": link, "perf": perf})
-                    push_event("warning", f"内部慢转发 {elapsed:.2f}s：{source_name}{code_label}")
+                    add_fail({"stage": "slow_forward", "error": f"内部慢转发 {elapsed:.2f}s，队列开始={qsize_at_start}，queue_wait={queue_wait_ms}ms，match={perf.get('match_ms',0)}ms，pre_dedup={perf.get('pre_dedup_ms',0)}ms，send_start={perf.get('before_send_ms',0)}ms{identity_label}", "link": link, "perf": perf})
+                    push_event("warning", f"内部慢转发 {elapsed:.2f}s：{source_name}{identity_label}")
             if failed and not sent:
-                self._release_pending_dedup(reserved_code_keys, dedup_profile)
-                self._requeue_pending_duplicates(reserved_code_keys)
+                self._release_pending_dedup(reserved_identity_keys, dedup_profile)
+                self._requeue_pending_duplicates(reserved_identity_keys)
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
                 self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
                 push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
         except FloodWaitError as e:
-            self._release_pending_dedup(reserved_code_keys, dedup_profile)
-            self._requeue_pending_duplicates(reserved_code_keys)
+            self._release_pending_dedup(reserved_identity_keys, dedup_profile)
+            self._requeue_pending_duplicates(reserved_identity_keys)
             add_fail({"stage": "floodwait", "error": f"FloodWait {e.seconds}s；不再长时间卡住转发队列"})
             if int(getattr(e, "seconds", 0) or 0) <= 3:
                 await asyncio.sleep(int(e.seconds))
         except Exception as e:
-            self._release_pending_dedup(reserved_code_keys, dedup_profile)
-            self._requeue_pending_duplicates(reserved_code_keys)
+            self._release_pending_dedup(reserved_identity_keys, dedup_profile)
+            self._requeue_pending_duplicates(reserved_identity_keys)
             add_fail({"stage": "handle_message", "error": str(e)})
             push_event("error", f"处理消息失败：{e}")
 

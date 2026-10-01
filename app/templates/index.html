@@ -410,7 +410,7 @@
   <div class="tab-content">
     <div class="tab-panel active" data-panel="hits"><div class="panel-headline"><b>命中记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="hits"><button class="small secondary">清空命中记录</button></form></div><div class="logbox big-logbox" id="hitsBox"></div></div>
     <div class="tab-panel" data-panel="dedups"><div class="panel-headline"><span><b>去重记录</b><em>只清理页面记录。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="dedup_recent"><button class="small secondary">清空去重记录</button></form></div><p class="hint">解除去重后，同一内容可再次转发。</p><div class="logbox big-logbox" id="dedupBox"></div></div>
-    <div class="tab-panel" data-panel="stats"><div class="panel-headline"><span><b>去重统计与碰撞反馈</b><em>误挡时可标记为不同抽奖。</em></span><form action="/clear_collisions" method="post" data-ajax="1"><button class="small secondary">清空碰撞记录</button></form></div><div class="logbox big-logbox" id="dedupStatsBox"></div><div class="logbox big-logbox" id="collisionBox"></div></div>
+    <div class="tab-panel" data-panel="stats"><div class="panel-headline"><span><b>去重统计与碰撞反馈</b><em>误挡时可标记为不同活动。</em></span><form action="/clear_collisions" method="post" data-ajax="1"><button class="small secondary">清空碰撞记录</button></form></div><div class="logbox big-logbox" id="dedupStatsBox"></div><div class="logbox big-logbox" id="collisionBox"></div></div>
     <div class="tab-panel" data-panel="fails"><div class="panel-headline"><b>失败 / 慢转发记录</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="fails"><button class="small secondary">清空失败记录</button></form></div><div class="logbox big-logbox" id="failsBox"></div></div>
     <div class="tab-panel" data-panel="perf"><div class="panel-headline"><span><b>性能诊断</b><em>只记录命中后的关键耗时，不记录未命中消息。</em></span><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="perf_events"><button class="small secondary">清空性能诊断</button></form></div><div class="logbox big-logbox" id="perfBox"></div></div>
     <div class="tab-panel" data-panel="events"><div class="panel-headline"><b>系统事件</b><form action="/clear_logs" method="post" data-ajax="1"><input type="hidden" name="kind" value="events"><button class="small secondary">清空系统事件</button></form></div><div class="logbox big-logbox" id="eventsBox"></div></div>
@@ -796,7 +796,7 @@ function renderLogs(data){
   }
   const perfBox = document.getElementById('perfBox');
   if(hasPerfEvents && perfBox){
-    const resultText = {sent:'已转发', duplicate:'重复跳过', duplicate_code:uiLabel('perf_duplicate_code_label','识别码重复'), send_failed:'发送失败'};
+    const resultText = {sent:'已转发', duplicate:'重复跳过', duplicate_identity:uiLabel('perf_duplicate_identity_label','身份重复'), send_failed:'发送失败'};
     perfBox.innerHTML = perfEvents.length ? perfEvents.map(p => {
       const label = resultText[p.result] || p.result || '-';
       const slow = p.slow ? ' slow' : '';
@@ -815,7 +815,7 @@ function renderDedupStats(stats){
     ['规则命中 TOP', stats.rule_hits || []],
     ['规则去重 TOP', stats.rule_duplicates || []],
     ['来源去重 TOP', stats.source_duplicates || []],
-    [uiLabel('stats_collision_title','身份碰撞 TOP'), stats.lottery_collisions || []],
+    [uiLabel('stats_collision_title','身份碰撞 TOP'), stats.correlation_collisions || []],
   ];
   box.innerHTML = groups.map(([title, rows]) => {
     if(!rows || !rows.length) return `<div class="stats-block"><b>${esc(title)}</b><div class="empty">暂无数据</div></div>`;
@@ -830,7 +830,8 @@ function renderCollisions(collisions){
 function renderRegexResult(r){
   if(!r) return;
   const box = document.getElementById('debugResult');
-  box.innerHTML = `<div class="debug-result ${r.matched?'ok-box':'warn-box'}"><div><b>命中：</b>${r.matched?'是':'否'}${r.excluded_text_notice?' / 命中排除文本：'+esc(r.excluded_keyword||''):''}${r.usage_notice?' / 已被使用通知过滤':''}${r.closed_register_notice?' / 已关闭注册过滤':''}${r.registration_success_notice?' / 个人注册成功通知过滤':''}</div>${r.rule?'<div><b>命中规则：</b><code>'+esc(r.rule)+'</code></div>':''}${r.rule_type?'<div><b>规则类型：</b>'+esc((r.rule_policy||{}).label||r.rule_type)+'　<b>绑定策略：</b><code>'+esc((r.rule_policy||{}).dedup_strategy||r.dedup_strategy||'-')+'</code></div>':''}${r.candidate?'<div><b>命中文本：</b>'+esc(r.candidate)+'</div>':''}${r.code_note?'<div><b>'+esc(uiLabel('debug_code_label','识别'))+'：</b>'+esc(r.code_rule||'已识别')+' / '+esc(r.code_note)+'</div>':''}<div><b>活动类型：</b>${esc(r.activity)}　<b>去重时间：</b>${r.ttl_minutes==0?'不去重':esc(r.ttl_minutes)+' 分钟'}</div>${r.code_identity?'<div><b>'+esc(uiLabel('debug_code_identity_label','识别身份'))+'：</b><code>'+esc(r.code_identity)+'</code></div>':''}${r.lottery_identity?'<div><b>'+esc(uiLabel('debug_lottery_identity_label','活动唯一字段'))+'：</b><code>'+esc(r.lottery_identity)+'</code></div><div><b>'+esc(uiLabel('debug_lottery_mode_label','活动去重模式'))+'：</b>'+esc(r.lottery_mode||'id')+'</div>':''}<div><b>去重 ID：</b><code>${esc(r.dedup_id)}</code></div><details class="inner-details"><summary>查看清理结果</summary><div class="code-block"><b>原文本</b><pre>${esc(r.original)}</pre></div><div class="code-block"><b>清理文本</b><pre>${esc(r.normalized)}</pre></div><div class="code-block"><b>紧凑文本</b><pre>${esc(r.compact)}</pre></div><div class="code-block"><b>核心文本</b><pre>${esc(r.core)}</pre></div></details></div>`;
+  const profileHtml = (r.profile_fields || []).map(f => `<div><b>${esc(f.label)}：</b><code>${esc(f.value)}</code></div>`).join('');
+  box.innerHTML = `<div class="debug-result ${r.matched?'ok-box':'warn-box'}"><div><b>命中：</b>${r.matched?'是':'否'}${r.excluded_text_notice?' / 命中排除文本：'+esc(r.excluded_keyword||''):''}${r.usage_notice?' / 已被使用通知过滤':''}${r.closed_register_notice?' / 已关闭注册过滤':''}${r.registration_success_notice?' / 个人注册成功通知过滤':''}</div>${r.rule?'<div><b>命中规则：</b><code>'+esc(r.rule)+'</code></div>':''}${r.rule_type?'<div><b>规则类型：</b>'+esc((r.rule_policy||{}).label||r.rule_type)+'　<b>绑定策略：</b><code>'+esc((r.rule_policy||{}).dedup_strategy||r.dedup_strategy||'-')+'</code></div>':''}${r.candidate?'<div><b>命中文本：</b>'+esc(r.candidate)+'</div>':''}${r.code_note?'<div><b>'+esc(uiLabel('debug_code_label','识别'))+'：</b>'+esc(r.code_rule||'已识别')+' / '+esc(r.code_note)+'</div>':''}<div><b>活动类型：</b>${esc(r.activity)}　<b>去重时间：</b>${r.ttl_minutes==0?'不去重':esc(r.ttl_minutes)+' 分钟'}</div>${profileHtml}<div><b>去重 ID：</b><code>${esc(r.dedup_id)}</code></div><details class="inner-details"><summary>查看清理结果</summary><div class="code-block"><b>原文本</b><pre>${esc(r.original)}</pre></div><div class="code-block"><b>清理文本</b><pre>${esc(r.normalized)}</pre></div><div class="code-block"><b>紧凑文本</b><pre>${esc(r.compact)}</pre></div><div class="code-block"><b>核心文本</b><pre>${esc(r.core)}</pre></div></details></div>`;
 }
 function renderRuleGenerateResult(r){
   if(!r) return;

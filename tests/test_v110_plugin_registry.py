@@ -225,7 +225,8 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 self.assertFalse(matcher._guard_flags("成功注册 邀请码：ABC123", "成功注册邀请码:ABC123")[0])
                 self.assertEqual(code_rules.DEFAULT_CODE_RULES, [])
                 self.assertFalse(code_rules._strong_codes_enabled())
-                self.assertEqual(dedup.LOTTERY_KWS, [])
+                self.assertEqual(dedup.TTL_DEFAULTS, {"other": 20})
+                self.assertFalse(hasattr(dedup, "LOTTERY_KWS"))
 
                 plugin_registry.PLUGIN_ROOT = original_root
                 plugin_registry.UPLOAD_ROOT = original_upload_root
@@ -235,7 +236,10 @@ class PluginRegistryV110Tests(unittest.TestCase):
                 self.assertTrue(matcher._guard_flags("成功注册 邀请码：ABC123", "成功注册邀请码:ABC123")[0])
                 self.assertNotEqual(code_rules.DEFAULT_CODE_RULES, [])
                 self.assertTrue(code_rules._strong_codes_enabled())
-                self.assertIn("抽奖", dedup.LOTTERY_KWS)
+                self.assertIn(
+                    "lottery",
+                    plugin_registry.builtin_section("dedup", {}).get("ttl_defaults", {}),
+                )
             finally:
                 plugin_registry.PLUGIN_ROOT = original_root
                 plugin_registry.UPLOAD_ROOT = original_upload_root

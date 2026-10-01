@@ -30,9 +30,15 @@ STATS_HASH_KEYS = (
     "stats:rule_duplicates",
     "stats:source_hits",
     "stats:source_duplicates",
-    "stats:lottery_collisions",
 )
+COLLISION_STATS_KEY = "stats:collisions"
 COLLISION_LIST = "dedup:collisions"
+COLLISION_EXEMPT_PREFIX = "dedup:collision_exempt:"
+ACTIVE_DEDUP_PATTERNS: list[str] = []
+DEDUP_META_PATTERNS: list[str] = ["dedup:meta:*"]
+PLUGIN_DEFAULTS: dict[str, str] = {}
+KNOWN_REGEX_RULE_MIGRATIONS: dict[str, str] = {}
+PLUGIN_STORAGE_CONFIG: dict[str, Any] = {}
 STATS_HASH_MAX_FIELDS = 500
 STATS_HASH_PRUNE_WATERMARK = 400
 STATS_HASH_PRUNE_INTERVAL_SECONDS = 300.0
@@ -64,81 +70,70 @@ end
 return #remove
 """
 
-LEGACY_PURE_CODE_TRIGGER_RULE = r"^(?!.*码使用)[^-]+-\d+-(?:Register|Renew)_.+$"
-LEGACY_SAFE_PURE_CODE_TRIGGER_RULE = (
-    r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
-    r"(?:Register|Renew)_[A-Za-z0-9_-]+$"
-)
-LEGACY_MASKED_PURE_CODE_TRIGGER_RULE = (
-    r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
-    r"(?:Register|Renew)_(?:[A-Za-z0-9_-]|数字|字母)+$"
-)
-LEGACY_SYMBOL_PURE_CODE_TRIGGER_RULE = (
-    r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
-    r"(?:Register|Renew)_(?:[^\s*`\u3400-\u9fff]|数字|字母)+$"
-)
-SAFE_PURE_CODE_TRIGGER_RULE = (
-    r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
-    r"(?:Register|Renew)_[^\s*`]+$"
-)
-LEGACY_SAFE_WHITELIST_TRIGGER_RULE = (
-    r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_"
-    r"(?a:[A-Za-z0-9]{10})"
-    r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
-)
-LEGACY_GUESS_WHITELIST_TRIGGER_RULE = (
-    r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_"
-    r"(?=[^\s*`]*[\u3400-\u9fff])"
-    r"(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))"
-    r"[^\s*`]+?"
-    r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
-)
-SAFE_WHITELIST_TRIGGER_RULE = (
-    r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_"
-    r"(?:"
-    r"(?a:[A-Za-z0-9]{10})"
-    r"|"
-    r"(?=[^\s*`]*[\u3400-\u9fff])"
-    r"(?=(?:[^A-Za-z0-9\s*`]*[A-Za-z0-9]){10}[^A-Za-z0-9\s*`]*(?=$|\s))"
-    r"[^\s*`]+?"
-    r")"
-    r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
-)
-LEGACY_REGISTRATION_ANNOUNCEMENT_RULE = (
-    r"((?:[🫧🎫🎟️🎭🤖⏳].*?(?:自由|定时)注册.*(?:\n[🫧🎫🎟️🎭🤖⏳].*\|\s*\d+.*)*\n?)+)"
-    r"|((?:[🎉✨📱⏰].*?开放注册.*(?:\n[🎉✨📱⏰].*)*\n?)+)"
-)
-SAFE_REGISTRATION_ANNOUNCEMENT_RULE = (
-    r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册"
-    r"|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"
-)
-LEGACY_OPEN_REGISTRATION_STATE_RULE = r"(?m)^[^\n]*(?:当前)?开注状态[：:]\s*True"
-SAFE_OPEN_REGISTRATION_STATE_RULE = (
-    r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)"
-    r"(?:True|ON|开启|开放|1|已开启)"
-    r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"
-)
-LEGACY_LOTTERY_ACTIVITY_RULE = r"\n\n🎁 抽奖活动已开始"
-SAFE_LOTTERY_ACTIVITY_RULE = r"(?m)^抽奖活动已开始！?$"
-LEGACY_PRIZE_CONTENT_TRIGGER_RULE = r"\n\n🎁 奖品内容"
-SAFE_PRIZE_CONTENT_TRIGGER_RULE = (
-    r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"
-)
-LEGACY_COMBINED_PRIZE_LOTTERY_RULE = r"🎁 抽奖开始啦;;\n\n🎁 奖品内容"
-SAFE_COMBINED_PRIZE_LOTTERY_RULE = r"🎁 抽奖开始啦;;" + SAFE_PRIZE_CONTENT_TRIGGER_RULE
-KNOWN_REGEX_RULE_MIGRATIONS = {
-    LEGACY_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
-    LEGACY_SAFE_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
-    LEGACY_MASKED_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
-    LEGACY_SYMBOL_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
-    LEGACY_SAFE_WHITELIST_TRIGGER_RULE: SAFE_WHITELIST_TRIGGER_RULE,
-    LEGACY_GUESS_WHITELIST_TRIGGER_RULE: SAFE_WHITELIST_TRIGGER_RULE,
-    LEGACY_REGISTRATION_ANNOUNCEMENT_RULE: SAFE_REGISTRATION_ANNOUNCEMENT_RULE,
-    LEGACY_OPEN_REGISTRATION_STATE_RULE: SAFE_OPEN_REGISTRATION_STATE_RULE,
-    LEGACY_LOTTERY_ACTIVITY_RULE: SAFE_LOTTERY_ACTIVITY_RULE,
-    LEGACY_PRIZE_CONTENT_TRIGGER_RULE: SAFE_PRIZE_CONTENT_TRIGGER_RULE,
-    LEGACY_COMBINED_PRIZE_LOTTERY_RULE: SAFE_COMBINED_PRIZE_LOTTERY_RULE,
-}
+def reload_builtins() -> None:
+    """Load plugin-owned storage defaults, migrations, and cache keys."""
+    global STATS_HASH_KEYS, COLLISION_STATS_KEY, COLLISION_LIST
+    global COLLISION_EXEMPT_PREFIX, ACTIVE_DEDUP_PATTERNS, DEDUP_META_PATTERNS
+    global PLUGIN_DEFAULTS, KNOWN_REGEX_RULE_MIGRATIONS, PLUGIN_STORAGE_CONFIG
+    try:
+        from plugin_runtime import call_hook
+
+        config = call_hook("get_storage_config", {}, default={}) or {}
+    except Exception:
+        config = {}
+    if not isinstance(config, dict):
+        config = {}
+    PLUGIN_STORAGE_CONFIG = dict(config)
+    stats_keys = config.get("stats_hash_keys")
+    if isinstance(stats_keys, list):
+        STATS_HASH_KEYS = tuple(str(value) for value in stats_keys if str(value))
+    COLLISION_STATS_KEY = str(
+        config.get("collision_stats_key") or "stats:collisions"
+    )
+    COLLISION_LIST = str(config.get("collision_list") or "dedup:collisions")
+    COLLISION_EXEMPT_PREFIX = str(
+        config.get("collision_exempt_prefix") or "dedup:collision_exempt:"
+    )
+    patterns = config.get("active_dedup_patterns")
+    ACTIVE_DEDUP_PATTERNS = (
+        [str(value) for value in patterns if str(value)]
+        if isinstance(patterns, list)
+        else []
+    )
+    meta_patterns = config.get("dedup_meta_patterns")
+    DEDUP_META_PATTERNS = (
+        [str(value) for value in meta_patterns if str(value)]
+        if isinstance(meta_patterns, list)
+        else ["dedup:meta:*"]
+    )
+    defaults = config.get("defaults")
+    PLUGIN_DEFAULTS = (
+        {str(key): str(value) for key, value in defaults.items()}
+        if isinstance(defaults, dict)
+        else {}
+    )
+    migrations = config.get("known_regex_rule_migrations")
+    KNOWN_REGEX_RULE_MIGRATIONS = (
+        {str(key): str(value) for key, value in migrations.items()}
+        if isinstance(migrations, dict)
+        else {}
+    )
+    aliases = config.get("aliases")
+    if isinstance(aliases, dict):
+        for name, value in aliases.items():
+            if str(name).isidentifier():
+                globals()[str(name)] = value
+    function_aliases = config.get("function_aliases")
+    if isinstance(function_aliases, dict):
+        for name, target in function_aliases.items():
+            target_name = str(target or "")
+            if str(name).isidentifier() and target_name in globals():
+                globals()[str(name)] = globals()[target_name]
+
+
+def get_plugin_storage_config() -> dict[str, Any]:
+    """Return the active plugin's opaque storage settings for generic hooks."""
+    return dict(PLUGIN_STORAGE_CONFIG)
 
 
 def log_line(level: str, message: str, extra: dict | None = None) -> None:
@@ -529,7 +524,7 @@ def dedup_stats(limit: int = 20) -> dict:
         "rule_duplicates": _top_hash("stats:rule_duplicates", limit),
         "source_hits": _top_hash("stats:source_hits", limit),
         "source_duplicates": _top_hash("stats:source_duplicates", limit),
-        "lottery_collisions": _top_hash("stats:lottery_collisions", limit),
+        "correlation_collisions": _top_hash(COLLISION_STATS_KEY, limit),
     }
 
 
@@ -550,12 +545,12 @@ return #kept
 """
 
 
-def add_lottery_collision(item: dict, limit: int = 200) -> None:
+def add_correlation_collision(item: dict, limit: int = 200) -> None:
     item = dict(item)
     item.setdefault("time", format_time())
     _enqueue_record(COLLISION_LIST, json.dumps(item, ensure_ascii=False), limit)
     _enqueue_counter(
-        "stats:lottery_collisions",
+        COLLISION_STATS_KEY,
         str(item.get("identity") or "")[:200],
     )
 
@@ -583,7 +578,9 @@ def is_collision_exempt(identity: str, dedup_id: str) -> bool:
     if not identity or not dedup_id:
         return False
     try:
-        return bool(r.sismember("dedup:collision_exempt:" + sha(identity), str(dedup_id)))
+        return bool(
+            r.sismember(COLLISION_EXEMPT_PREFIX + sha(identity), str(dedup_id))
+        )
     except Exception:
         return False
 
@@ -591,7 +588,7 @@ def is_collision_exempt(identity: str, dedup_id: str) -> bool:
 def mark_collision_distinct(identity: str, dedup_id: str) -> bool:
     if not identity or not dedup_id:
         return False
-    key = "dedup:collision_exempt:" + sha(identity)
+    key = COLLISION_EXEMPT_PREFIX + sha(identity)
     try:
         r.sadd(key, str(dedup_id))
         r.expire(key, 7 * 24 * 60 * 60)
@@ -628,19 +625,18 @@ def sha(text: str) -> str:
 
 
 def ensure_defaults() -> None:
+    reload_builtins()
     defaults = {
         "dedup_enabled": "1",
         "dedup_minutes": "20",
-        "dedup_invite_minutes": "0",
-        "dedup_code_minutes": "20",
         "dedup_mode": "strict",
         "display_timezone": "Asia/Shanghai",
         "bot_status": "stopped",
         "listener_desired_state": "stopped",
         "dedup_similarity_enabled": "0",
-        "dedup_lottery_template_mode": "global",
         "worker_count": str(LISTENER_WORKERS),
     }
+    defaults.update(PLUGIN_DEFAULTS)
     for k, v in defaults.items():
         r.setnx(k, v)
     migrate_known_regex_rules()
@@ -724,22 +720,6 @@ def count_patterns(patterns: list[str]) -> int:
     return len(seen)
 
 
-ACTIVE_DEDUP_PATTERNS = [
-    "dedup:main:*",
-    "dedup:core:*",
-    "dedup:link:*",
-    "dedup:code:*",
-    "dedup:lottery:*",
-    "dedup:lottery-template:*",
-    "dedup:register_snapshot:*",
-    "dedup:content_url:*",
-    "dedup:text:*",
-    "dedup:collision_exempt:*",
-]
-
-DEDUP_META_PATTERNS = ["dedup:meta:*"]
-
-
 _CACHED_STATS = {"ts":0.0,"data":{}}
 
 def clear_stats_cache():
@@ -760,7 +740,7 @@ def cache_stats() -> dict:
     dedup_meta = count_patterns(DEDUP_META_PATTERNS)
     result = {
         "redis_keys": safe_dbsize(),
-        "record_logs": list_len("events") + list_len("hits") + list_len("fails") + list_len("dedup:recent") + list_len("perf_events") + list_len("dedup:collisions"),
+        "record_logs": list_len("events") + list_len("hits") + list_len("fails") + list_len("dedup:recent") + list_len("perf_events") + list_len(COLLISION_LIST),
         "events": list_len("events"),
         "hits": list_len("hits"),
         "fails": list_len("fails"),
@@ -817,3 +797,6 @@ def cleanup_expired_dedup_keys() -> int:
     except Exception:
         pass
     return deleted
+
+
+reload_builtins()

@@ -1,3 +1,4 @@
+import re
 import time
 from typing import Any
 
@@ -10,12 +11,11 @@ CORE_RULE_TYPES = {
         "aliases": ["keyword", "关键词", "文本"],
         "dedup_strategy": "normalized_text",
         "ttl_minutes": 20,
-        "lottery_template_mode": "off",
         "forward": True,
     },
 }
 
-ALLOWED_GENERATOR_STRATEGIES = {"code", "lottery", "line"}
+GENERATOR_STRATEGY_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 CACHE_TTL = 60.0
 _CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
 
@@ -47,7 +47,7 @@ def available_rule_types() -> list[dict]:
                 if (
                     not normalized_id
                     or not label
-                    or strategy not in ALLOWED_GENERATOR_STRATEGIES
+                    or not GENERATOR_STRATEGY_RE.fullmatch(strategy)
                 ):
                     continue
                 item = {

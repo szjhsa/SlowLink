@@ -47,9 +47,10 @@ class SafetyFixesV13912Tests(unittest.TestCase):
 
         self.assertIn("_COLLISION_FILTER_SCRIPT", redis_store)
         self.assertIn("r.eval(_COLLISION_FILTER_SCRIPT", redis_store)
-        self.assertIn('"dedup:lottery-template:*"', redis_store)
-        self.assertIn('"dedup:collision_exempt:*"', redis_store)
-        self.assertIn('list_len("dedup:collisions")', redis_store)
+        storage = read(APP / "plugins" / "builtin" / "storage_impl.py")
+        self.assertIn('"dedup:lottery-template:*"', storage)
+        self.assertIn('"dedup:collision_exempt:*"', storage)
+        self.assertIn("list_len(COLLISION_LIST)", redis_store)
 
     def test_release_dedup_has_meta_loss_fallback(self):
         dedup = read(APP / "dedup.py")

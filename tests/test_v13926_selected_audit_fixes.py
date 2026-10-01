@@ -67,11 +67,11 @@ class SelectedAuditFixesV13926Tests(unittest.TestCase):
         runner = read(APP / "bot_runner.py")
 
         self.assertIn("_pending_duplicate_events", runner)
-        self.assertIn("_remember_pending_duplicate(duplicate_code_key, event", runner)
-        self.assertIn("self._requeue_pending_duplicates(reserved_code_keys)", runner)
-        self.assertIn("self._clear_pending_duplicates(reserved_code_keys)", runner)
+        self.assertIn("_remember_pending_duplicate(duplicate_identity_key, event", runner)
+        self.assertIn("self._requeue_pending_duplicates(reserved_identity_keys)", runner)
+        self.assertIn("self._clear_pending_duplicates(reserved_identity_keys)", runner)
         self.assertGreaterEqual(
-            runner.count("self._requeue_pending_duplicates(reserved_code_keys)"),
+            runner.count("self._requeue_pending_duplicates(reserved_identity_keys)"),
             3,
         )
 

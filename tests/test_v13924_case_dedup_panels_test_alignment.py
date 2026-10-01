@@ -32,8 +32,11 @@ class CaseDedupPanelsAndTestAlignmentV13924Tests(unittest.TestCase):
     def test_bot_runner_uses_normalized_identity_and_full_log(self):
         source = read(APP / "bot_runner.py")
 
-        self.assertIn("normalize_code_identity(identity)", source)
-        self.assertIn("code_key = \"dedup:code:\" + sha(normalized_identity)", source)
+        self.assertIn('"normalize_dedup_identity"', source)
+        self.assertIn("call_hook(", source)
+        self.assertIn("identity_key = identity_key_prefix + sha(normalized_identity)", source)
+        storage = read(APP / "plugins" / "builtin" / "storage_impl.py")
+        self.assertIn('"identity_key_prefix": "dedup:code:"', storage)
         self.assertIn("duplicate_identity[:160]", source)
         self.assertNotIn("duplicate_identity[:16]", source)
 

@@ -61,6 +61,20 @@ def extract_code_identities(payload):
     )
 
 
+def extract_dedup_identities(payload):
+    if not isinstance(payload, dict):
+        return []
+    return _code_impl().extract_code_identities(str(payload.get("text") or ""))
+
+
+def normalize_dedup_identity(payload):
+    if not isinstance(payload, dict):
+        return ""
+    return _code_impl().normalize_code_identity(
+        str(payload.get("identity") or "")
+    )
+
+
 def normalize_code_identity(payload):
     if not isinstance(payload, dict):
         return ""
@@ -90,15 +104,29 @@ def _dedup_impl():
     return module
 
 
+def _storage_impl():
+    module = load_plugin_module("storage_impl")
+    if module is None:
+        raise RuntimeError("插件缺少 storage_impl")
+    return module
+
+
+def get_storage_config(payload):
+    return _storage_impl().storage_config()
+
+
 def build_dedup_profile(payload):
     if not isinstance(payload, dict):
         return None
+    identities = payload.get("identities")
+    if not isinstance(identities, list):
+        identities = payload.get("code_identities") or []
     profile = _dedup_impl().build_profile(
         str(payload.get("text") or ""),
         str(payload.get("message_link") or ""),
         str(payload.get("source") or ""),
         policy=payload.get("policy") if isinstance(payload.get("policy"), dict) else None,
-        code_identities=payload.get("code_identities") or [],
+        code_identities=identities,
     )
     if not isinstance(profile, dict):
         return profile

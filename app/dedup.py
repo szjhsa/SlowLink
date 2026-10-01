@@ -14,11 +14,21 @@ if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
 from redis_store import r, sha, format_time
+
+try:
+    from redis_store import get_plugin_storage_config
+except ImportError:
+    def get_plugin_storage_config() -> dict[str, Any]:
+        try:
+            value = call_hook("get_storage_config", {}, default={}) or {}
+            return dict(value) if isinstance(value, dict) else {}
+        except Exception:
+            return {}
 from plugin_registry import builtin_section
 from plugin_runtime import call_hook
 
 try:
-    from redis_store import add_lottery_collision as _add_collision
+    from redis_store import add_correlation_collision as _add_collision
     from redis_store import is_collision_exempt as _is_collision_exempt
 except (ImportError, AttributeError):
     def _add_collision(item: dict) -> None:
@@ -52,9 +62,6 @@ _TTL_CACHE: dict[str, tuple[float, int]] = {}
 _TTL_CACHE_TTL = 30.0
 _CORRELATION_WINDOW_CACHE: dict[str, object] = {"ts": 0.0, "value": 600}
 
-LOTTERY_KWS: list[str] = []
-JOINT_LOTTERY_KWS: list[str] = []
-LONG_TERM_KWS: list[str] = []
 TTL_DEFAULTS: dict[str, int] = {"other": 20}
 
 
@@ -64,11 +71,8 @@ def clear_ttl_cache() -> None:
 
 
 def reload_builtins() -> None:
-    global LOTTERY_KWS, JOINT_LOTTERY_KWS, LONG_TERM_KWS, TTL_DEFAULTS
+    global TTL_DEFAULTS
     section = builtin_section("dedup", {}) or {}
-    LOTTERY_KWS = list(section.get("lottery_keywords") or [])
-    JOINT_LOTTERY_KWS = list(section.get("joint_lottery_keywords") or [])
-    LONG_TERM_KWS = list(section.get("long_term_keywords") or [])
     ttl_defaults = section.get("ttl_defaults")
     if isinstance(ttl_defaults, dict) and ttl_defaults:
         TTL_DEFAULTS = {
@@ -141,33 +145,6 @@ def classify_activity(text: str) -> str:
 def ttl_policy_for_text(text: str) -> str:
     result = call_hook("dedup_ttl_policy", {"text": text}, default=None)
     return result if isinstance(result, str) and result else "normal"
-
-
-def extract_lottery_identity(text: str) -> str:
-    result = call_hook("extract_lottery_identity", {"text": text}, default=None)
-    return result if isinstance(result, str) else ""
-
-
-def extract_lottery_global_identity(text: str) -> str:
-    result = call_hook(
-        "extract_lottery_global_identity",
-        {"text": text},
-        default=None,
-    )
-    return result if isinstance(result, str) else ""
-
-
-def extract_lottery_template_identity(
-    text: str,
-    message_link: str = "",
-    source: str = "",
-) -> str:
-    result = call_hook(
-        "extract_lottery_template_identity",
-        {"text": text, "message_link": message_link, "source": source},
-        default=None,
-    )
-    return result if isinstance(result, str) else ""
 
 
 def _register_renew_code_fingerprints(text: str) -> list[str]:
@@ -249,11 +226,16 @@ def _correlation_window_seconds() -> int:
 
 
 def _configured_correlation_mode() -> str:
+    config = get_plugin_storage_config()
+    key = str(config.get("correlation_mode_key") or "")
+    if not key:
+        return "off"
+    default = str(config.get("correlation_mode_default") or "off")
     try:
-        value = str(r.get("dedup_lottery_template_mode") or "global")
+        value = str(r.get(key) or default)
     except Exception:
-        value = "global"
-    return value if value in {"global", "id", "off"} else "global"
+        value = default
+    return value if value in {"global", "id", "off"} else "off"
 
 
 def ttl_minutes_for_activity(activity: str, fallback: int | None = None) -> int:
@@ -305,7 +287,7 @@ def build_profile(
     message_link: str = "",
     source: str = "",
     policy: dict[str, Any] | None = None,
-    code_identities: list[str] | None = None,
+    identities: list[str] | None = None,
 ) -> dict[str, Any]:
     result = call_hook(
         "build_dedup_profile",
@@ -314,7 +296,7 @@ def build_profile(
             "message_link": message_link,
             "source": source,
             "policy": policy,
-            "code_identities": code_identities or [],
+            "identities": identities or [],
             "correlation_mode": _configured_correlation_mode(),
         },
         default=None,
@@ -416,19 +398,23 @@ def check_and_mark(
     mode: str = "strict",
     source: str = "",
     policy: dict[str, Any] | None = None,
-    code_identities: list[str] | None = None,
+    identities: list[str] | None = None,
 ) -> tuple[bool, str, dict]:
     profile = build_profile(
         text,
         message_link,
         source,
         policy=policy,
-        code_identities=code_identities,
+        identities=identities,
     )
     content_key = "dedup:" + profile["dedup_id"]
     link_key = "dedup:link:" + sha(message_link) if message_link else ""
+    storage_config = get_plugin_storage_config()
+    correlation_policy_field = str(
+        storage_config.get("correlation_mode_policy_field") or "correlation_mode"
+    )
     correlation_mode = str(
-        (policy or {}).get("lottery_template_mode")
+        (policy or {}).get(correlation_policy_field)
         or profile.get("correlation_mode")
         or "off"
     )
@@ -487,9 +473,8 @@ def check_and_mark(
         _release_new_keys(new_keys)
         reason_category = str(profile.get("reason_category") or "text")
         fallback_reasons = {
-            "identity_fallback": "未识别到完整码，按相同文本内容重复（{ttl}分钟内）",
-            "code": "相同完整码重复（{ttl}分钟内）",
-            "lottery_id": "相同标识重复（{ttl}分钟内）",
+            "identity_fallback": "未识别到身份，按相同文本内容重复（{ttl}分钟内）",
+            "identity": "相同身份重复（{ttl}分钟内）",
             "text": "相同文本内容重复（{ttl}分钟内）",
         }
         reason = _reason(

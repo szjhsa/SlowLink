@@ -238,9 +238,17 @@ class GlobalScratchDedupV1396Tests(unittest.TestCase):
         self.assertNotEqual(original, changed)
 
     def test_non_lottery_voucher_chat_has_no_template_identity(self):
-        dedup, _client = load_dedup()
+        sys.path.insert(0, str(APP))
+        try:
+            from plugin_runtime import call_hook
 
-        identity = dedup.extract_lottery_template_identity("今天刮刮乐送10元代金券，大家聊聊")
+            identity = call_hook(
+                "extract_lottery_template_identity",
+                {"text": "今天刮刮乐送10元代金券，大家聊聊"},
+                default="",
+            )
+        finally:
+            sys.path.remove(str(APP))
 
         self.assertEqual(identity, "")
 

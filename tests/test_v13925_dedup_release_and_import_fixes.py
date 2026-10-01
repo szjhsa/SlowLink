@@ -17,13 +17,13 @@ class DedupReleaseAndImportFixesV13925Tests(unittest.TestCase):
         self.assertEqual(read(ROOT / "VERSION").strip(), EXPECTED_VERSION)
         self.assertIn(f'APP_VERSION = "{EXPECTED_VERSION}"', read(APP / "config.py"))
 
-    def test_code_dedup_is_disabled_when_dedup_disabled_or_zero(self):
+    def test_identity_dedup_is_disabled_when_dedup_disabled_or_zero(self):
         bot_runner = read(APP / "bot_runner.py")
 
-        self.assertIn("code_dedup_enabled = (", bot_runner)
-        self.assertIn("and effective_code_minutes > 0", bot_runner)
-        self.assertIn("and should_run_code_dedup(rule_policy)", bot_runner)
-        self.assertIn("if code_identities and code_dedup_enabled:", bot_runner)
+        self.assertIn("identity_dedup_enabled = (", bot_runner)
+        self.assertIn("and effective_identity_minutes > 0", bot_runner)
+        self.assertIn("and should_run_identity_dedup(rule_policy)", bot_runner)
+        self.assertIn("if identity_values and identity_dedup_enabled:", bot_runner)
 
     def test_exceptions_release_pending_code_and_text_dedup(self):
         bot_runner = read(APP / "bot_runner.py")
@@ -36,7 +36,7 @@ class DedupReleaseAndImportFixesV13925Tests(unittest.TestCase):
         body = handle.group(0)
         flood_idx = body.rindex("except FloodWaitError as e:")
         generic_idx = body.rindex("except Exception as e:")
-        release_call = "self._release_pending_dedup(reserved_code_keys, dedup_profile)"
+        release_call = "self._release_pending_dedup(reserved_identity_keys, dedup_profile)"
         self.assertIn(release_call, body[flood_idx:flood_idx + 300])
         self.assertIn(release_call, body[generic_idx:generic_idx + 300])
 

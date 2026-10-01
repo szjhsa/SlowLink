@@ -357,7 +357,7 @@ def match_rules(text: str) -> tuple[bool, str]:
     # Code-trigger fallback
     code_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
     if code_detail and code_detail.get("can_trigger"):
-        return True, "码识别触发：" + str(code_detail.get("name") or "完整码")
+        return True, "识别规则触发：" + str(code_detail.get("name") or "识别身份")
 
     return False, ""
 
@@ -448,7 +448,7 @@ def match_rule_details(text: str) -> dict:
     trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
     if trigger_detail and trigger_detail.get("can_trigger"):
         return {
-            "matched": True, "rule": "码识别触发：" + str(trigger_detail.get("name") or "完整码"),
+            "matched": True, "rule": "识别规则触发：" + str(trigger_detail.get("name") or "识别身份"),
             "candidate": "码识别规则",
             "usage_notice": False, "closed_register_notice": False,
             "code_detected": True,
@@ -462,7 +462,7 @@ def match_rule_details(text: str) -> dict:
         "usage_notice": False, "closed_register_notice": False,
         "code_detected": bool(code_detail),
         "code_rule": code_detail.get("name", "") if code_detail else "",
-        "code_note": ("已识别完整码，但默认仅辅助去重，不触发转发" if code_detail else ""),
+        "code_note": ("已识别转发身份，但默认仅辅助去重，不触发转发" if code_detail else ""),
         "original": original, "normalized": normalized, "compact": compact,
     }
 

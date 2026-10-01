@@ -48,7 +48,6 @@ def default_policy(rule_type: str, *, require_available: bool = True) -> dict[st
     strategy = str(merged.get("strategy") or config.get("strategy") or "").strip().lower()
     default_strategy = "normalized_text" if strategy == "line" else ""
     default_ttl = 20 if strategy == "line" else 0
-    default_template_mode = "off"
     default_forward = True
 
     dedup_strategy = str(
@@ -60,22 +59,11 @@ def default_policy(rule_type: str, *, require_available: bool = True) -> dict[st
     merged["label"] = str(merged.get("label") or config.get("label") or key)
     merged["strategy"] = strategy
     merged["dedup_strategy"] = dedup_strategy
-    mode = str(
-        merged.get("lottery_template_mode")
-        or config.get("lottery_template_mode")
-        or default_template_mode
-    )
-    merged["lottery_template_mode"] = (
-        mode if mode in {"global", "id", "off"} else default_template_mode
-    )
     merged["ttl_minutes"] = _normalize_ttl(
         merged.get("ttl_minutes", config.get("ttl_minutes")), default_ttl
     )
     merged["forward"] = bool(
         merged.get("forward", config.get("forward", default_forward))
-    )
-    merged["code_dedup"] = bool(
-        merged.get("code_dedup", config.get("code_dedup", False))
     )
     return merged
 
@@ -94,17 +82,30 @@ def normalize_policy(value: dict[str, Any] | None, rule_type: str = "") -> dict[
         or selected_type
     )
     base["dedup_strategy"] = str(base.get("dedup_strategy") or "")
-    mode = str(base.get("lottery_template_mode") or "off")
-    base["lottery_template_mode"] = mode if mode in {"global", "id", "off"} else "off"
     base["ttl_minutes"] = _normalize_ttl(base.get("ttl_minutes"), 0)
     base["forward"] = bool(base.get("forward", True))
     return base
 
 
-def should_run_code_dedup(policy: dict[str, Any] | None) -> bool:
+def should_run_identity_dedup(policy: dict[str, Any] | None) -> bool:
     if not policy:
         return True
-    return bool(policy.get("code_dedup", False))
+    try:
+        from redis_store import get_plugin_storage_config
+
+        config = get_plugin_storage_config()
+    except Exception:
+        config = {}
+    if not config:
+        try:
+            from plugin_runtime import call_hook
+
+            value = call_hook("get_storage_config", {}, default={}) or {}
+            config = dict(value) if isinstance(value, dict) else {}
+        except Exception:
+            config = {}
+    field = str(config.get("identity_dedup_policy_field") or "identity_dedup")
+    return bool(policy.get(field, config.get("identity_dedup_default", False)))
 
 
 def policy_is_available(policy: dict[str, Any] | None) -> bool:

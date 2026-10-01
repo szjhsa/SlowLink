@@ -39,7 +39,7 @@ class RulePluginHardeningV120Tests(unittest.TestCase):
 
         self.assertIn('add_code_rule("生成码规则", pattern', source)
 
-    def test_plugin_generator_schema_rejects_unknown_strategy(self):
+    def test_plugin_generator_schema_accepts_plugin_strategy_and_rejects_malformed(self):
         sys.path.insert(0, str(APP))
         try:
             import plugin_registry
@@ -55,11 +55,26 @@ class RulePluginHardeningV120Tests(unittest.TestCase):
                         "types": {
                             "broken": {
                                 "label": "错误类型",
-                                "strategy": "unknown",
+                                "strategy": "Bad Strategy!",
                             }
                         }
                     },
                 })
+            plugin_registry.validate_rules_data({
+                "matcher": {},
+                "code_rules": {},
+                "dedup": {},
+                "rule_types": {},
+                "flow": {},
+                "rule_generator": {
+                    "types": {
+                        "custom": {
+                            "label": "插件自定义类型",
+                            "strategy": "custom_strategy",
+                        }
+                    }
+                },
+            })
         finally:
             try:
                 sys.path.remove(str(APP))

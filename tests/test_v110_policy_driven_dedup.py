@@ -29,7 +29,7 @@ class PolicyDrivenDedupV110Tests(unittest.TestCase):
             "strict",
             "来源A",
             policy=policy,
-            code_identities=["strong_register_renew:Wlao-30-Register_Ab12Cd34Ef"],
+            identities=["strong_register_renew:Wlao-30-Register_Ab12Cd34Ef"],
         )
         second, reason, second_profile = dedup.check_and_mark(
             "完全不同说明\nWlao-30-Register_Ab12Cd34Ef",
@@ -38,7 +38,7 @@ class PolicyDrivenDedupV110Tests(unittest.TestCase):
             "strict",
             "来源B",
             policy=policy,
-            code_identities=["strong_register_renew:Wlao-30-Register_Ab12Cd34Ef"],
+            identities=["strong_register_renew:Wlao-30-Register_Ab12Cd34Ef"],
         )
 
         self.assertFalse(first)
@@ -68,9 +68,9 @@ class PolicyDrivenDedupV110Tests(unittest.TestCase):
     def test_lottery_policy_ignores_unrelated_code_identity(self):
         policy = rule_policy.default_policy("lottery")
 
-        self.assertFalse(rule_policy.should_run_code_dedup(policy))
-        self.assertTrue(rule_policy.should_run_code_dedup(rule_policy.default_policy("code")))
-        self.assertTrue(rule_policy.should_run_code_dedup({}))
+        self.assertFalse(rule_policy.should_run_identity_dedup(policy))
+        self.assertTrue(rule_policy.should_run_identity_dedup(rule_policy.default_policy("code")))
+        self.assertTrue(rule_policy.should_run_identity_dedup({}))
 
     def test_keyword_policy_uses_normalized_text_and_policy_ttl(self):
         dedup, _client = load_dedup()
@@ -109,10 +109,10 @@ class PolicyDrivenDedupV110Tests(unittest.TestCase):
         source = (APP / "bot_runner.py").read_text(encoding="utf-8-sig")
 
         self.assertIn('rule_policy = analysis.get("rule_policy") or {}', source)
-        self.assertIn("should_run_code_dedup(rule_policy)", source)
+        self.assertIn("should_run_identity_dedup(rule_policy)", source)
         self.assertIn("policy=rule_policy", source)
-        self.assertIn("code_identities=code_identities", source)
-        self.assertIn("effective_code_minutes", source)
+        self.assertIn("identities=identity_values", source)
+        self.assertIn("effective_identity_minutes", source)
 
 
 if __name__ == "__main__":

@@ -326,7 +326,7 @@ class InstallerAndRuntimeHardeningV13887Tests(unittest.TestCase):
         self.assertIn("def clear_timezone_cache", store)
         perf_init = re.search(
             r"perf = \{(?P<body>.*?)\n\s+\}\n\s+"
-            r"(?:reserved_code_keys = \[\]\n\s+dedup_profile = None\n\s+)?try:",
+            r"(?:reserved_identity_keys = \[\]\n\s+dedup_profile = None\n\s+)?try:",
             runner,
             flags=re.S,
         )

@@ -18,7 +18,7 @@ from pathlib import Path
 import regex as _regex
 
 from config import APP_VERSION
-from rule_types import ALLOWED_GENERATOR_STRATEGIES
+from rule_types import GENERATOR_STRATEGY_RE
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parent / "plugins"
@@ -226,16 +226,7 @@ def validate_rules_data(rules: dict) -> None:
             raise ValueError(f"rules.json 缺少 section：{section}")
 
     matcher = rules["matcher"]
-    for key in (
-        "code_line_pattern",
-        "inv_code_pattern",
-        "usage_status_pattern",
-        "closed_register_pattern",
-        "registration_status_pattern",
-        "exhausted_register_pattern",
-        "registration_success_pattern",
-    ):
-        _validate_regex(matcher.get(key), f"matcher.{key}", _regex_engine="re", flags=re.I | re.M)
+    _validate_pattern_fields(matcher, "matcher", _regex_engine="re", flags=re.I | re.M)
 
     code_rules = rules["code_rules"]
     default_rules = code_rules.get("default_rules")
@@ -252,8 +243,7 @@ def validate_rules_data(rules: dict) -> None:
         )
 
     dedup = rules["dedup"]
-    for key in ("lottery_id_pattern", "lottery_seed_pattern"):
-        _validate_regex(dedup.get(key), f"dedup.{key}", _regex_engine="re", flags=re.I)
+    _validate_pattern_fields(dedup, "dedup", _regex_engine="re", flags=re.I)
     dynamic_patterns = dedup.get("dynamic_line_patterns")
     if dynamic_patterns is not None:
         if not isinstance(dynamic_patterns, list):
@@ -291,7 +281,7 @@ def validate_rules_data(rules: dict) -> None:
             if not str(item.get("label") or "").strip():
                 raise ValueError(f"rule_generator.types.{type_id} 缺少 label")
             strategy = str(item.get("strategy") or "").strip().lower()
-            if strategy not in ALLOWED_GENERATOR_STRATEGIES:
+            if not GENERATOR_STRATEGY_RE.fullmatch(strategy):
                 raise ValueError(
                     f"rule_generator.types.{type_id} 使用了不支持的 strategy：{strategy}"
                 )
@@ -315,6 +305,20 @@ def _validate_regex(value, field: str, _regex_engine: str, flags: int) -> None:
             re.compile(pattern, flags)
     except Exception as exc:
         raise ValueError(f"{field} 正则无效：{exc}") from exc
+
+
+def _validate_pattern_fields(section: dict, prefix: str, *, _regex_engine: str, flags: int) -> None:
+    """Validate plugin-declared regex fields by a generic naming convention."""
+    for key, value in section.items():
+        name = str(key)
+        if not name.endswith("_pattern"):
+            continue
+        _validate_regex(
+            value,
+            f"{prefix}.{name}",
+            _regex_engine=_regex_engine,
+            flags=flags,
+        )
 
 
 def validate_plugin(plugin_id: str) -> dict:
@@ -495,6 +499,10 @@ def reload_all() -> None:
     from matcher import reload_builtins as reload_matcher_builtins
     from code_rules import reload_builtins as reload_code_builtins
     from dedup import reload_builtins as reload_dedup_builtins
+    try:
+        from redis_store import reload_builtins as reload_storage_builtins
+    except Exception:
+        reload_storage_builtins = None
     from rule_policy import clear_cache as clear_rule_policy_cache
     from rule_types import clear_cache as clear_rule_types_cache
 
@@ -502,5 +510,7 @@ def reload_all() -> None:
     reload_matcher_builtins()
     reload_code_builtins()
     reload_dedup_builtins()
+    if reload_storage_builtins is not None:
+        reload_storage_builtins()
     clear_rule_policy_cache()
     clear_rule_types_cache()

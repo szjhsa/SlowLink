@@ -41,7 +41,7 @@ class ObviousErrorFixesV13867Tests(unittest.TestCase):
     def test_count_patterns_scans_each_requested_pattern(self):
         redis_store = read(APP / "redis_store.py")
         body = re.search(
-            r"def count_patterns\(patterns: list\[str\]\) -> int:(?P<body>.*?)(?=\n\nACTIVE_DEDUP_PATTERNS)",
+            r"def count_patterns\(patterns: list\[str\]\) -> int:(?P<body>.*?)(?=\n\n_CACHED_STATS)",
             redis_store,
             flags=re.S,
         )

@@ -226,6 +226,7 @@
       "label": "码子",
       "dedup_strategy": "code_identity",
       "code_dedup": true,
+      "add_code_rule": true,
       "ttl_minutes": 20,
       "lottery_template_mode": "off",
       "forward": true
@@ -326,11 +327,18 @@
     "collision_blocked_label": "被全局抽奖身份拦截",
     "collision_empty": "暂无抽奖碰撞记录",
     "collision_mark_label": "标记为不同抽奖",
-    "perf_duplicate_code_label": "邀请码重复",
+    "perf_duplicate_identity_label": "邀请码重复",
     "debug_code_label": "码识别",
     "debug_code_identity_label": "完整码身份",
     "debug_lottery_identity_label": "抽奖唯一字段",
-    "debug_lottery_mode_label": "抽奖去重模式"
+    "debug_lottery_mode_label": "抽奖去重模式",
+    "debug_profile_fields": [
+      {"key": "code_identity", "label": "完整码身份"},
+      {"key": "weak_code_identity", "label": "弱码身份"},
+      {"key": "content_url_identity", "label": "内容链接身份"},
+      {"key": "lottery_identity", "label": "抽奖唯一字段"},
+      {"key": "lottery_mode", "label": "抽奖去重模式"}
+    ]
   },
   "flow": {
     "priority_keywords": [

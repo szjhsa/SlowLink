@@ -51,10 +51,10 @@ extract_telegram_start_register_renew_codes = (
 )
 
 try:
-    from redis_store import add_lottery_collision as _add_lottery_collision
+    from redis_store import add_correlation_collision as _add_collision
     from redis_store import is_collision_exempt as _is_collision_exempt
 except (ImportError, AttributeError):
-    def _add_lottery_collision(item: dict) -> None:
+    def _add_collision(item: dict) -> None:
         try:
             import json as _json
             r.lpush("dedup:collisions", _json.dumps(item, ensure_ascii=False))
@@ -934,7 +934,7 @@ def check_and_mark(
                 ]
                 _release_new_keys(new_template_keys)
                 reason = "同一抽奖的不同模板重复（10分钟内）"
-                _add_lottery_collision({
+                _add_collision({
                     "identity": effective_template_identities[template_index],
                     "dedup_id": profile["dedup_id"],
                     "first_dedup_id": existing_id,

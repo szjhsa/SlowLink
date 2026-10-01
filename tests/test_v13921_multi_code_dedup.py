@@ -50,11 +50,12 @@ class MultiCodeDedupV13921Tests(unittest.TestCase):
     def test_bot_runner_reserves_all_code_keys(self):
         bot_runner = read(APP / "bot_runner.py")
 
-        self.assertIn("from code_rules import extract_code_identities", bot_runner)
-        self.assertIn("for identity in extract_code_identities(text):", bot_runner)
-        self.assertIn("reserved_code_keys.append(code_key)", bot_runner)
+        self.assertIn("from plugin_runtime import call_hook", bot_runner)
+        self.assertIn('"extract_dedup_identities"', bot_runner)
+        self.assertIn("for identity in call_hook(", bot_runner)
+        self.assertIn("reserved_identity_keys.append(identity_key)", bot_runner)
         self.assertIn("duplicate_identity", bot_runner)
-        self.assertIn("self._release_pending_dedup(reserved_code_keys)", bot_runner)
+        self.assertIn("self._release_pending_dedup(reserved_identity_keys)", bot_runner)
 
 
 if __name__ == "__main__":

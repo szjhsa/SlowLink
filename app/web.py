@@ -408,6 +408,7 @@ def _page_data() -> dict:
         if (policy := get_rule_policy(rule))
     }
     plugin_ui = _plugin_ui()
+    dedup_values = _dedup_values(plugin_ui)
     return {
         "app_version": APP_VERSION,
         "tg_api_id": get("tg_api_id", "") or "",
@@ -430,15 +431,10 @@ def _page_data() -> dict:
         "dedup_enabled": get("dedup_enabled", "1") == "1",
         "dedup_minutes": get("dedup_minutes", "20") or "20",
         "dedup_mode": get("dedup_mode", "strict") or "strict",
-        "dedup_register_minutes": get("dedup_register_minutes", "20") or "20",
-        "dedup_invite_minutes": get("dedup_invite_minutes", "0") or "0",
-        "dedup_code_minutes": get("dedup_code_minutes", "20") or "20",
-        "dedup_lottery_minutes": get("dedup_lottery_minutes", "720") or "720",
-        "dedup_joint_lottery_minutes": get("dedup_joint_lottery_minutes", "4320") or "4320",
-        "dedup_lottery_key_mode": get("dedup_lottery_key_mode", "id") or "id",
-        "dedup_lottery_template_mode": get("dedup_lottery_template_mode", "global") or "global",
-        "dedup_long_term_minutes": get("dedup_long_term_minutes", "10080") or "10080",
-        "dedup_other_minutes": get("dedup_other_minutes", "20") or "20",
+        "dedup_other_minutes": dedup_values.get(
+            "dedup_other_minutes",
+            get("dedup_other_minutes", "20") or "20",
+        ),
         "events": list_events(30),
         "hits": list_hits(30),
         "fails": list_fails(30),
@@ -454,7 +450,7 @@ def _page_data() -> dict:
         "plugin_manifest": plugin_manifest(active_plugin_id()) or {},
         "rule_generator_types": available_rule_types(),
         "plugin_ui": plugin_ui,
-        "dedup_values": _dedup_values(plugin_ui),
+        "dedup_values": dedup_values,
     }
 
 
@@ -1022,7 +1018,7 @@ def add_generated_rule_route():
     sadd("regex_rules", pattern)
     try:
         save_rule_policy(pattern, rule_type)
-        if policy.get("dedup_strategy") == "code_identity":
+        if policy.get("add_code_rule"):
             add_code_rule("生成码规则", pattern, "0", True, False, False)
     except Exception:
         delete_rule_policy(pattern)
@@ -1236,6 +1232,17 @@ def regex_test():
         ttl = ttl_minutes_for_profile(profile, None)
         diagnostics = rule_diagnostics()
         invalid = [x for x in diagnostics if not x.get("ok")]
+        profile_fields = []
+        for item in (_plugin_ui().get("debug_profile_fields") or []):
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key") or "").strip()
+            value = profile.get(key)
+            if key and value not in (None, "", [], {}):
+                profile_fields.append({
+                    "label": str(item.get("label") or key),
+                    "value": str(value),
+                })
         result = {
             "matched": analysis.get("matched"),
             "rule": analysis.get("rule"),
@@ -1257,15 +1264,11 @@ def regex_test():
             "compact": analysis.get("compact", "")[:1200],
             "activity": profile.get("activity"),
             "core": profile.get("core", "")[:800],
-            "code_identity": profile.get("code_identity", ""),
-            "weak_code_identity": profile.get("weak_code_identity", ""),
-            "content_url_identity": profile.get("content_url_identity", ""),
             "dedup_strategy": profile.get("dedup_strategy", ""),
             "rule_type": analysis.get("rule_type", ""),
             "rule_policy": rule_policy,
             "ttl_policy": profile.get("ttl_policy", ""),
-            "lottery_identity": profile.get("lottery_identity", ""),
-            "lottery_mode": profile.get("lottery_mode", ""),
+            "profile_fields": profile_fields,
             "dedup_id": profile.get("dedup_id", ""),
             "ttl_minutes": ttl,
             "rule_count": len(diagnostics),
@@ -1370,7 +1373,7 @@ def clear_collisions_route():
     if gate:
         return gate
     _clear_collisions()
-    return done("抽奖碰撞记录已清空", "success")
+    return done("碰撞记录已清空", "success")
 
 
 @app.post("/mark_collision_distinct")
@@ -1383,8 +1386,8 @@ def mark_collision_distinct_route():
     if not identity or not dedup_id:
         return done("缺少碰撞身份或去重 ID", "error", ok=False)
     if _mark_collision_distinct(identity, dedup_id):
-        push_event("warning", f"已标记为不同抽奖：{identity[:120]}")
-        return done("已标记，该文本后续不再被此抽奖身份拦截", "success")
+        push_event("warning", f"已标记为不同活动：{identity[:120]}")
+        return done("已标记，该文本后续不再被此身份拦截", "success")
     return done("标记失败", "error", ok=False)
 
 
@@ -1393,6 +1396,21 @@ def export_config():
     gate = require_login()
     if gate:
         return gate
+    dedup_payload = {
+        "enabled": get("dedup_enabled", "1") or "1",
+        "mode": get("dedup_mode", "strict") or "strict",
+    }
+    for item in _ui_field_defs(_plugin_ui()):
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        default = str(item.get("default") or "0")
+        export_key = key[len("dedup_"):] if key.startswith("dedup_") else key
+        dedup_payload[export_key] = get(key, default) or default
+    dedup_payload.setdefault(
+        "other_minutes",
+        get("dedup_other_minutes", "20") or "20",
+    )
     payload = {
         "version": APP_VERSION,
         "export_time": format_time(),
@@ -1413,19 +1431,7 @@ def export_config():
         "code_rules_source": "plugin" if active_plugin_id() else "pure",
         "code_rules_plugin": get_code_rules_for_source("plugin"),
         "code_rules_pure": get_code_rules_for_source("pure"),
-        "dedup": {
-            "enabled": get("dedup_enabled", "1") or "1",
-            "mode": get("dedup_mode", "strict") or "strict",
-            "register_minutes": get("dedup_register_minutes", "20") or "20",
-            "invite_minutes": get("dedup_invite_minutes", "0") or "0",
-            "code_minutes": get("dedup_code_minutes", "20") or "20",
-            "lottery_minutes": get("dedup_lottery_minutes", "720") or "720",
-            "joint_lottery_minutes": get("dedup_joint_lottery_minutes", "4320") or "4320",
-            "lottery_key_mode": get("dedup_lottery_key_mode", "id") or "id",
-            "lottery_template_mode": get("dedup_lottery_template_mode", "global") or "global",
-            "long_term_minutes": get("dedup_long_term_minutes", "10080") or "10080",
-            "other_minutes": get("dedup_other_minutes", "20") or "20",
-        },
+        "dedup": dedup_payload,
         "ui": {
             "display_timezone": get("display_timezone", "Asia/Shanghai") or "Asia/Shanghai",
         },
@@ -1470,6 +1476,11 @@ def import_config():
 
         def _take_snapshot() -> dict:
             snap = {}
+            plugin_keys = [
+                str(item.get("key") or "").strip()
+                for item in _ui_field_defs(_plugin_ui())
+                if str(item.get("key") or "").strip()
+            ]
             string_keys = (
                 "target_chat",
                 "public_link_domain",
@@ -1477,17 +1488,9 @@ def import_config():
                 "display_timezone",
                 "dedup_enabled",
                 "dedup_mode",
-                "dedup_register_minutes",
-                "dedup_invite_minutes",
-                "dedup_code_minutes",
-                "dedup_lottery_minutes",
-                "dedup_joint_lottery_minutes",
-                "dedup_long_term_minutes",
                 "dedup_other_minutes",
-                "dedup_lottery_key_mode",
-                "dedup_lottery_template_mode",
                 "dedup_minutes",
-            )
+            ) + tuple(plugin_keys)
             for key in string_keys:
                 snap[key] = ("str", get(key, None))
             for key in ("monitor_chats", "exclude_chats", "exclude_texts", "regex_rules", "regex_rules_disabled"):
@@ -1596,19 +1599,11 @@ def import_config():
             migrate_known_regex_rules()
         if mode != "rules_only":
             d = payload.get("dedup") or {}
-            mapping = {
-                "enabled": "dedup_enabled",
-                "mode": "dedup_mode",
-                "register_minutes": "dedup_register_minutes",
-                "invite_minutes": "dedup_invite_minutes",
-                "code_minutes": "dedup_code_minutes",
-                "lottery_minutes": "dedup_lottery_minutes",
-                "joint_lottery_minutes": "dedup_joint_lottery_minutes",
-                "lottery_key_mode": "dedup_lottery_key_mode",
-                "lottery_template_mode": "dedup_lottery_template_mode",
-                "long_term_minutes": "dedup_long_term_minutes",
-                "other_minutes": "dedup_other_minutes",
-            }
+            mapping = {"other_minutes": "dedup_other_minutes"}
+            for item in _ui_field_defs(_plugin_ui()):
+                key = str(item.get("key") or "").strip()
+                if key.startswith("dedup_"):
+                    mapping.setdefault(key[len("dedup_"):], key)
             changed_dedup = False
             for src, dst in mapping.items():
                 if src in d:
