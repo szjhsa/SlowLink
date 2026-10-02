@@ -257,6 +257,29 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
         self.assertFalse(result["matched"])
         self.assertEqual(result["rule"], "")
 
+    def test_plugin_suppression_blocks_matching_user_regex(self):
+        rule = "抽奖"
+        matcher = load_matcher(
+            plugin_match={
+                "matched": False,
+                "suppressed": True,
+                "reason": "instruction_text",
+            },
+            regex_rules={rule},
+        )
+
+        result = matcher.analyze_message("本群玩法里的抽奖说明")
+        details = matcher.match_rule_details("本群玩法里的抽奖说明")
+        matched, matched_rule = matcher.match_rules("本群玩法里的抽奖说明")
+
+        self.assertFalse(result["matched"])
+        self.assertTrue(result["suppressed_notice"])
+        self.assertEqual(result["suppressed_reason"], "instruction_text")
+        self.assertFalse(details["matched"])
+        self.assertTrue(details["suppressed_notice"])
+        self.assertFalse(matched)
+        self.assertEqual(matched_rule, "")
+
     def test_pure_mode_does_not_know_lottery_business(self):
         matcher = load_matcher(plugin_match=None, regex_rules=set())
 

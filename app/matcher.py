@@ -238,7 +238,15 @@ def _plugin_event_match(original: str, normalized: str, compact: str) -> dict | 
         },
         default=None,
     )
-    if not isinstance(result, dict) or not result.get("matched"):
+    if not isinstance(result, dict):
+        return None
+    if result.get("suppressed"):
+        return {
+            "suppressed": True,
+            "reason": str(result.get("reason") or "plugin_suppressed"),
+            "code_detail": {},
+        }
+    if not result.get("matched"):
         return None
 
     rule = str(result.get("rule") or "plugin:event")
@@ -318,6 +326,19 @@ def analyze_message(text: str) -> dict:
     for raw, cre in regexes:
         if _safe_search(cre, original):
             plugin_match = _plugin_event_match(original, normalized, compact)
+            if plugin_match and plugin_match.get("suppressed"):
+                return {
+                    "matched": False,
+                    "rule": raw,
+                    "code_detail": {},
+                    "normalized": normalized,
+                    "compact": compact,
+                    "usage_notice": False,
+                    "closed_register_notice": False,
+                    "registration_success_notice": False,
+                    "suppressed_notice": True,
+                    "suppressed_reason": plugin_match["reason"],
+                }
             plugin_code_detail = (
                 plugin_match.get("code_detail")
                 if isinstance(plugin_match, dict)
@@ -397,6 +418,9 @@ def match_rules(text: str) -> tuple[bool, str]:
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
         if _safe_search(cre, text):
+            plugin_match = _plugin_event_match(text, normalized, compact)
+            if plugin_match and plugin_match.get("suppressed"):
+                return False, ""
             return True, raw
 
     return False, ""
@@ -475,6 +499,24 @@ def match_rule_details(text: str) -> dict:
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
         if _safe_search(cre, original):
+            plugin_match = _plugin_event_match(original, normalized, compact)
+            if plugin_match and plugin_match.get("suppressed"):
+                return {
+                    "matched": False,
+                    "rule": raw,
+                    "candidate": "",
+                    "usage_notice": False,
+                    "closed_register_notice": False,
+                    "registration_success_notice": False,
+                    "suppressed_notice": True,
+                    "suppressed_reason": plugin_match["reason"],
+                    "code_detected": bool(code_detail),
+                    "code_rule": code_detail.get("name", "") if code_detail else "",
+                    "code_note": "",
+                    "original": original,
+                    "normalized": normalized,
+                    "compact": compact,
+                }
             return {
                 "matched": True, "rule": raw, "candidate": "原始文本",
                 "usage_notice": False, "closed_register_notice": False,
