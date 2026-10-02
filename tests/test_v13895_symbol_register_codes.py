@@ -21,12 +21,12 @@ OLD_SERVER_MASKED_PATTERN = (
 )
 
 
-def load_modules(stored_code_rules=None):
+def load_modules(stored_code_rules=None, regex_rules=()):
     saved = []
     fake_store = types.ModuleType("redis_store")
     fake_store.get_json = lambda key, default=None: stored_code_rules if key == "code_rules" else default
     fake_store.set_json = lambda *args, **kwargs: saved.append(args)
-    fake_store.smembers = lambda _key: set()
+    fake_store.smembers = lambda key: set(regex_rules) if key == "regex_rules" else set()
 
     module_names = ("redis_store", "code_rules", "matcher")
     old_modules = {name: sys.modules.get(name) for name in module_names}
@@ -76,7 +76,9 @@ class SymbolRegisterCodeV13895Tests(unittest.TestCase):
         self.assertIn(f'APP_VERSION = "{EXPECTED_VERSION}"', config)
 
     def test_at_symbol_code_is_extracted_and_triggers(self):
-        code_rules, matcher, _saved = load_modules()
+        code_rules, matcher, _saved = load_modules(
+            regex_rules={r"帝服-30-Register_"}
+        )
         text = SOURCE_CODE + " 艾特符号猜一个数字"
 
         detail = code_rules.extract_code_detail(text)

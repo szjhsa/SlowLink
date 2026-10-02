@@ -156,7 +156,9 @@ def load_redis_store(client):
 
 class ChineseGuessCodeV139Tests(unittest.TestCase):
     def test_register_guess_codes_are_extracted_and_match_the_system_rule(self):
-        code_rules, matcher = load_modules(regex_rules={CURRENT_REGISTER_RULE})
+        code_rules, matcher = load_modules(
+            regex_rules={r"CineTrail-30-Register_"}
+        )
 
         for code in REGISTER_CODES:
             with self.subTest(code=code):
@@ -169,16 +171,21 @@ class ChineseGuessCodeV139Tests(unittest.TestCase):
 
     def test_whitelist_guess_codes_are_extracted_and_plugin_triggers(self):
         code_rules, matcher_without_rule = load_modules()
+        _code_rules, matcher_with_rule = load_modules(
+            regex_rules={r"CineTrail-Whitelist_"}
+        )
 
         for code in WHITELIST_CODES:
             with self.subTest(code=code):
                 detail = code_rules.extract_code_detail(code)
-                result = matcher_without_rule.analyze_message(code)
+                without_rule = matcher_without_rule.analyze_message(code)
+                result = matcher_with_rule.analyze_message(code)
 
                 self.assertEqual(detail.get("code"), code)
                 self.assertEqual(detail.get("identity"), "strong_whitelist:" + code)
+                self.assertFalse(without_rule.get("matched"))
                 self.assertTrue(result.get("matched"))
-                self.assertTrue(str(result.get("rule") or "").startswith("plugin:"))
+                self.assertEqual(result.get("rule"), r"CineTrail-Whitelist_")
 
     def test_known_system_rules_migrate_to_guess_code_rules(self):
         client = FakeRedisClient({CURRENT_REGISTER_RULE, CURRENT_WHITELIST_RULE})

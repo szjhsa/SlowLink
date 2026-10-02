@@ -84,8 +84,11 @@ class MatcherRulePolicyV110Tests(unittest.TestCase):
         analysis = matcher.analyze_message("抽奖活动已开始！")
 
         self.assertTrue(analysis["matched"])
-        self.assertEqual(analysis["rule_type"], "")
-        self.assertEqual(analysis["rule_policy"], {})
+        self.assertEqual(analysis["rule_type"], "lottery")
+        self.assertEqual(
+            analysis["rule_policy"]["dedup_strategy"],
+            "lottery_identity",
+        )
 
 
 if __name__ == "__main__":

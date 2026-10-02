@@ -23,10 +23,10 @@ FALSE_POSITIVE = (
 )
 
 
-def load_real_matcher():
+def load_real_matcher(regex_rules=()):
     code_rules, _saved = load_code_rules_with_fake_redis()
     fake_store = types.ModuleType("redis_store")
-    fake_store.smembers = lambda key: set()
+    fake_store.smembers = lambda key: set(regex_rules) if key == "regex_rules" else set()
     fake_store.log_line = lambda *a, **k: None
     old_modules = {name: sys.modules.get(name) for name in ("redis_store", "code_rules")}
     sys.modules["redis_store"] = fake_store
@@ -80,7 +80,8 @@ class HyphenRegisterCodesV13917Tests(unittest.TestCase):
         self.assertTrue(result["usage_notice"])
 
     def test_generated_code_success_message_is_not_usage_filtered(self):
-        matcher = load_real_matcher()
+        matcher_without_rule = load_real_matcher()
+        matcher = load_real_matcher(regex_rules={r"Cc-register-"})
         generated = (
             "🎁恭喜,生成注册码成功!\n"
             "💰剩余积分为: 0\n"
@@ -88,8 +89,10 @@ class HyphenRegisterCodesV13917Tests(unittest.TestCase):
             "Tips:也可以在 **注册码-专属注册码** 那里查看!"
         )
 
+        without_rule = matcher_without_rule.match_rule_details(generated)
         result = matcher.match_rule_details(generated)
 
+        self.assertFalse(without_rule["matched"])
         self.assertTrue(result["matched"])
         self.assertFalse(result["usage_notice"])
 

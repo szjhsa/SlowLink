@@ -3,7 +3,7 @@ import time
 import unicodedata
 import regex as _regex
 from redis_store import smembers
-from code_rules import extract_code_detail, extract_trigger_code_detail
+from code_rules import extract_code_detail
 from plugin_registry import builtin_section
 from plugin_runtime import call_hook
 from rule_policy import default_policy, get_rule_policy, policy_is_available
@@ -317,48 +317,40 @@ def analyze_message(text: str) -> dict:
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
         if _safe_search(cre, original):
-            code_detail = extract_code_detail(normalized) or extract_code_detail(compact)
+            plugin_match = _plugin_event_match(original, normalized, compact)
+            plugin_code_detail = (
+                plugin_match.get("code_detail")
+                if isinstance(plugin_match, dict)
+                else {}
+            )
+            code_detail = (
+                plugin_code_detail
+                or extract_code_detail(normalized)
+                or extract_code_detail(compact)
+            )
+            policy_fields = _rule_policy_fields(raw)
+            if (
+                plugin_match
+                and not policy_fields.get("rule_policy")
+            ):
+                policy_fields = {
+                    "rule_type": plugin_match["rule_type"],
+                    "rule_policy": plugin_match["rule_policy"],
+                    "rule_policy_unavailable": False,
+                }
             return {
                 "matched": True,
                 "rule": raw,
+                "plugin_rule": (
+                    plugin_match["rule"] if isinstance(plugin_match, dict) else ""
+                ),
                 "code_detail": code_detail or {},
                 "normalized": normalized,
                 "compact": compact,
                 "usage_notice": False,
                 "closed_register_notice": False,
-                **_rule_policy_fields(raw),
+                **policy_fields,
             }
-
-    plugin_match = _plugin_event_match(original, normalized, compact)
-    if plugin_match:
-        code_detail = plugin_match.get("code_detail") or extract_code_detail(normalized) or extract_code_detail(compact)
-        return {
-            "matched": True,
-            "rule": plugin_match["rule"],
-            "candidate": plugin_match["candidate"],
-            "code_detail": code_detail or {},
-            "normalized": normalized,
-            "compact": compact,
-            "usage_notice": False,
-            "closed_register_notice": False,
-            "registration_success_notice": False,
-            "rule_type": plugin_match["rule_type"],
-            "rule_policy": plugin_match["rule_policy"],
-        }
-
-    trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
-    if trigger_detail and trigger_detail.get("can_trigger"):
-        return {
-            "matched": True,
-            "rule": "code_trigger:" + str(trigger_detail.get("name") or "full_code"),
-            "code_detail": trigger_detail,
-            "normalized": normalized,
-            "compact": compact,
-            "usage_notice": False,
-            "closed_register_notice": False,
-            "rule_type": "",
-            "rule_policy": {},
-        }
 
     return {
         "matched": False,
@@ -406,15 +398,6 @@ def match_rules(text: str) -> tuple[bool, str]:
     for raw, cre in regexes:
         if _safe_search(cre, text):
             return True, raw
-
-    plugin_match = _plugin_event_match(text, normalized, compact)
-    if plugin_match:
-        return True, plugin_match["rule"]
-
-    # Code-trigger fallback
-    code_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
-    if code_detail and code_detail.get("can_trigger"):
-        return True, "识别规则触发：" + str(code_detail.get("name") or "识别身份")
 
     return False, ""
 
@@ -500,32 +483,6 @@ def match_rule_details(text: str) -> dict:
                 "code_note": code_detail.get("safe_reason", "") if code_detail else "",
                 "original": original, "normalized": normalized, "compact": compact,
             }
-
-    plugin_match = _plugin_event_match(original, normalized, compact)
-    if plugin_match:
-        plugin_code_detail = plugin_match.get("code_detail") or code_detail
-        return {
-            "matched": True, "rule": plugin_match["rule"],
-            "candidate": plugin_match["candidate"] or "插件规则",
-            "usage_notice": False, "closed_register_notice": False,
-            "code_detected": bool(plugin_code_detail),
-            "code_rule": plugin_code_detail.get("name", "") if plugin_code_detail else "",
-            "code_note": plugin_code_detail.get("safe_reason", "") if plugin_code_detail else "",
-            "original": original, "normalized": normalized, "compact": compact,
-        }
-
-    # Code trigger fallback
-    trigger_detail = extract_trigger_code_detail(normalized) or extract_trigger_code_detail(compact)
-    if trigger_detail and trigger_detail.get("can_trigger"):
-        return {
-            "matched": True, "rule": "识别规则触发：" + str(trigger_detail.get("name") or "识别身份"),
-            "candidate": "码识别规则",
-            "usage_notice": False, "closed_register_notice": False,
-            "code_detected": True,
-            "code_rule": trigger_detail.get("name", ""),
-            "code_note": trigger_detail.get("safe_reason", ""),
-            "original": original, "normalized": normalized, "compact": compact,
-        }
 
     return {
         "matched": False, "rule": "", "candidate": "",

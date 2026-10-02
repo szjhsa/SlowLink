@@ -53,7 +53,7 @@ def inspect_with_empty_main_rules(text: str) -> dict:
 
 
 class WhitelistCodeV13888Tests(unittest.TestCase):
-    def test_exact_code_is_identified_and_plugin_triggers_without_main_rule(self):
+    def test_exact_code_is_identified_but_requires_main_rule(self):
         result = inspect_with_empty_main_rules(SAMPLE)
 
         self.assertEqual(result["detail"].get("code"), SAMPLE)
@@ -62,10 +62,7 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
             "strong_whitelist:" + SAMPLE,
         )
         self.assertFalse(result["trigger"].get("can_trigger"))
-        self.assertTrue(result["analysis"].get("matched"))
-        self.assertTrue(
-            str(result["analysis"].get("rule") or "").startswith("plugin:")
-        )
+        self.assertFalse(result["analysis"].get("matched"))
 
     def test_matching_main_regex_triggers_and_attaches_code_identity(self):
         result = inspect_message(SAMPLE, (WHITELIST_MAIN_RULE,))

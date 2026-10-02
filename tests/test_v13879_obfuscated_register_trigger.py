@@ -12,13 +12,14 @@ SOURCE_MESSAGE = (
     "怪 18+服，需要的猜猜"
 )
 EXPECTED_CODE = "GuaiCum-30-Register_ZlB5cqmu"
+REGISTER_RULE = r"GuaiCum-30-Register_"
 
 
-def inspect_with_empty_main_rules(text: str) -> dict:
+def inspect_with_main_rules(text: str, regex_rules=()) -> dict:
     fake_store = types.ModuleType("redis_store")
     fake_store.get_json = lambda key, default=None: default
     fake_store.set_json = lambda *args, **kwargs: None
-    fake_store.smembers = lambda key: set()
+    fake_store.smembers = lambda key: set(regex_rules) if key == "regex_rules" else set()
 
     module_names = ("redis_store", "code_rules", "matcher")
     old_modules = {name: sys.modules.get(name) for name in module_names}
@@ -46,7 +47,7 @@ def inspect_with_empty_main_rules(text: str) -> dict:
 
 class ObfuscatedRegisterTriggerV13879Tests(unittest.TestCase):
     def test_embedded_asterisks_are_removed_from_complete_register_code(self):
-        result = inspect_with_empty_main_rules(SOURCE_MESSAGE)
+        result = inspect_with_main_rules(SOURCE_MESSAGE)
 
         self.assertEqual(result["detail"].get("code"), EXPECTED_CODE)
         self.assertEqual(
@@ -54,24 +55,32 @@ class ObfuscatedRegisterTriggerV13879Tests(unittest.TestCase):
             "strong_register_renew:" + EXPECTED_CODE,
         )
 
-    def test_complete_register_code_triggers_without_a_main_regex_rule(self):
-        result = inspect_with_empty_main_rules(SOURCE_MESSAGE)
+    def test_complete_register_code_requires_a_main_regex_rule(self):
+        result = inspect_with_main_rules(SOURCE_MESSAGE)
+        result_with_rule = inspect_with_main_rules(
+            SOURCE_MESSAGE,
+            (REGISTER_RULE,),
+        )
 
         self.assertTrue(result["trigger"].get("can_trigger"))
         self.assertEqual(result["trigger"].get("code"), EXPECTED_CODE)
-        self.assertTrue(result["analysis"].get("matched"))
-        self.assertTrue(str(result["analysis"].get("rule") or "").startswith("plugin:"))
+        self.assertFalse(result["analysis"].get("matched"))
+        self.assertTrue(result_with_rule["analysis"].get("matched"))
+        self.assertEqual(result_with_rule["analysis"].get("rule"), REGISTER_RULE)
 
     def test_usage_notice_with_obfuscated_code_remains_blocked(self):
         text = "注册码使用 - Roman 使用了 GuaiCum-30-Register_ZlB5*cqm*u"
 
-        result = inspect_with_empty_main_rules(text)
+        result = inspect_with_main_rules(text)
 
         self.assertFalse(result["analysis"].get("matched"))
         self.assertTrue(result["analysis"].get("usage_notice"))
 
     def test_period_inside_complete_code_is_preserved(self):
-        result = inspect_with_empty_main_rules("GuaiCum-30-Register_ZlB5.cqmu")
+        result = inspect_with_main_rules(
+            "GuaiCum-30-Register_ZlB5.cqmu",
+            (REGISTER_RULE,),
+        )
 
         self.assertTrue(result["analysis"].get("matched"))
         self.assertTrue(result["trigger"].get("can_trigger"))

@@ -26,11 +26,11 @@ SECOND_BATCH = "\n".join([
 ])
 
 
-def load_matcher_modules():
+def load_matcher_modules(regex_rules=()):
     fake_store = types.ModuleType("redis_store")
     fake_store.get_json = lambda _key, default=None: default
     fake_store.set_json = lambda *_args, **_kwargs: None
-    fake_store.smembers = lambda _key: set()
+    fake_store.smembers = lambda key: set(regex_rules) if key == "regex_rules" else set()
 
     module_names = ("redis_store", "code_rules", "matcher", "telegram_start_links")
     old_modules = {name: sys.modules.get(name) for name in module_names}
@@ -79,7 +79,9 @@ def load_dedup():
 
 class TelegramStartLinksV13898Tests(unittest.TestCase):
     def test_days_first_register_start_link_triggers_and_preserves_identity(self):
-        code_rules, matcher = load_matcher_modules()
+        code_rules, matcher = load_matcher_modules(
+            regex_rules={r"https?://(?:t\.me|telegram\.me)/Moonkkbot\?start="}
+        )
 
         detail = code_rules.extract_code_detail(FIRST_BATCH)
         result = matcher.analyze_message(FIRST_BATCH)
@@ -93,7 +95,9 @@ class TelegramStartLinksV13898Tests(unittest.TestCase):
         self.assertEqual(result.get("code_detail", {}).get("code"), detail.get("code"))
 
     def test_telegram_me_renew_start_link_is_supported(self):
-        code_rules, matcher = load_matcher_modules()
+        code_rules, matcher = load_matcher_modules(
+            regex_rules={r"https?://(?:t\.me|telegram\.me)/Moonkkbot\?start="}
+        )
         text = "https://telegram.me/Moonkkbot?start=30-Renew_seeuhmOtV8"
 
         self.assertEqual(
@@ -123,7 +127,9 @@ class TelegramStartLinksV13898Tests(unittest.TestCase):
         self.assertIn("register renew code fingerprints", first)
 
     def test_existing_project_prefixed_start_link_still_triggers(self):
-        code_rules, matcher = load_matcher_modules()
+        code_rules, matcher = load_matcher_modules(
+            regex_rules={r"https?://(?:t\.me|telegram\.me)/Moonkkbot\?start="}
+        )
         text = "https://t.me/Moonkkbot?start=SAKURA-30-Register_WXK6y4Pa1i"
 
         self.assertTrue(code_rules.extract_code_detail(text))

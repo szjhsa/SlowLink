@@ -215,26 +215,47 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
         self.assertIsInstance(plugin_match("SAKURA-Whitelist_HBLeB9jZ0d"), dict)
 
     def test_core_uses_plugin_match_and_policy(self):
-        matcher = load_matcher(plugin_match={
-            "matched": True,
-            "rule": "plugin:全局抽奖",
-            "rule_type": "lottery",
-            "candidate": "🎁 抽奖活动已开始！",
-        })
+        rule = "抽奖活动已开始"
+        matcher = load_matcher(
+            plugin_match={
+                "matched": True,
+                "rule": "plugin:全局抽奖",
+                "rule_type": "lottery",
+                "candidate": "🎁 抽奖活动已开始！",
+            },
+            regex_rules={rule},
+        )
 
         result = matcher.analyze_message("🎁 抽奖活动已开始！")
 
         self.assertTrue(result["matched"])
-        self.assertEqual(result["rule"], "plugin:全局抽奖")
+        self.assertEqual(result["rule"], rule)
+        self.assertEqual(result["plugin_rule"], "plugin:全局抽奖")
         self.assertEqual(result["rule_type"], "lottery")
         self.assertEqual(result["rule_policy"]["dedup_strategy"], "lottery_identity")
 
         details = matcher.match_rule_details("🎁 抽奖活动已开始！")
         self.assertTrue(details["matched"])
-        self.assertEqual(details["rule"], "plugin:全局抽奖")
+        self.assertEqual(details["rule"], rule)
         matched, rule = matcher.match_rules("🎁 抽奖活动已开始！")
         self.assertTrue(matched)
-        self.assertEqual(rule, "plugin:全局抽奖")
+        self.assertEqual(rule, "抽奖活动已开始")
+
+    def test_plugin_match_does_not_trigger_without_user_regex(self):
+        matcher = load_matcher(
+            plugin_match={
+                "matched": True,
+                "rule": "plugin:全局抽奖",
+                "rule_type": "lottery",
+                "candidate": "🎁 抽奖活动已开始！",
+            },
+            regex_rules=set(),
+        )
+
+        result = matcher.analyze_message("🎁 抽奖活动已开始！")
+
+        self.assertFalse(result["matched"])
+        self.assertEqual(result["rule"], "")
 
     def test_pure_mode_does_not_know_lottery_business(self):
         matcher = load_matcher(plugin_match=None, regex_rules=set())
