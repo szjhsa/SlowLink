@@ -188,6 +188,50 @@ class FirstReliabilityBatchTests(unittest.TestCase):
         self.assertEqual(second_profile["registration_open_time"], "2026-10-09 23:27")
         self.assertNotEqual(first_profile["dedup_id"], second_profile["dedup_id"])
 
+    def test_registration_capacity_snapshot_is_part_of_dedup_identity(self):
+        dedup, _client = load_dedup()
+        policy = {
+            "rule_type": "keyword",
+            "dedup_strategy": "normalized_text",
+            "ttl_minutes": 60,
+        }
+        first = (
+            "🫧 管理员 已开启 自由注册\n"
+            "🎫 总注册限制 | 500\n"
+            "🎟️ 已注册人数 | 400\n"
+            "🎭 剩余可注册 | 100"
+        )
+        second = first.replace("已注册人数 | 400", "已注册人数 | 401").replace(
+            "剩余可注册 | 100",
+            "剩余可注册 | 99",
+        )
+
+        first_profile = dedup.build_profile(first, policy=policy)
+        second_profile = dedup.build_profile(second, policy=policy)
+        repeated_profile = dedup.build_profile(first, policy=policy)
+
+        self.assertIn("registered_users=400", first_profile["registration_snapshot"])
+        self.assertIn("remaining_users=99", second_profile["registration_snapshot"])
+        self.assertNotEqual(first_profile["dedup_id"], second_profile["dedup_id"])
+        self.assertEqual(first_profile["dedup_id"], repeated_profile["dedup_id"])
+
+    def test_job_timeout_and_business_progress_are_wired(self):
+        source = (APP / "bot_runner.py").read_text(encoding="utf-8-sig")
+        compose = (ROOT / "deploy" / "docker-compose.yml").read_text(
+            encoding="utf-8-sig"
+        )
+
+        self.assertIn("JOB_MAX_PROCESSING_SECONDS", source)
+        self.assertIn("asyncio.wait_for(", source)
+        self.assertIn("listener_job_stalled", source)
+        self.assertIn("listener_last_progress_ts", source)
+        self.assertIn("listener_last_received_ts", source)
+        self.assertIn('push_event("error", reason)', source)
+        self.assertIn(
+            "JOB_MAX_PROCESSING_SECONDS=${JOB_MAX_PROCESSING_SECONDS:-180}",
+            compose,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

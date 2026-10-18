@@ -193,7 +193,7 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
             "🎉 刮刮乐\n\n"
             "🎁 奖品：\n"
             "  ▸ 10元代金券 x1\n\n"
-            "⏰ 截止时间：2026-10-01 20:00"
+            "⏰ 截止时间：2099-10-01 20:00"
         )
 
         result = plugin_match(text)

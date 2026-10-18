@@ -155,6 +155,20 @@ REGISTRATION_TIME_LABELS = (
     "恢复注册时间",
     "重新开放时间",
 )
+REGISTRATION_CAPACITY_LABELS = {
+    "总注册限制": "total_limit",
+    "注册限制": "total_limit",
+    "当前允许注册人数": "allowed_users",
+    "已注册人数": "registered_users",
+    "注册人数": "registered_users",
+    "剩余可注册": "remaining_users",
+    "剩余可注册人数": "remaining_users",
+    "剩余名额": "remaining_users",
+    "可注册名额": "remaining_users",
+    "bot使用人数": "bot_users",
+    "被禁用人数": "disabled_users",
+    "商店开放状态": "store_state",
+}
 
 LOTTERY_ID_RE = re.compile(
     r"(?:抽奖\s*ID|lottery\s*id)\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9_-]{5,127})",
@@ -262,10 +276,42 @@ def _extract_registration_open_time(text: str) -> str:
     return ""
 
 
-def _text_hash_input(normalized: str, registration_open_time: str) -> str:
-    if not registration_open_time:
-        return normalized
-    return normalized + "\nregistration open time " + registration_open_time
+def _extract_registration_snapshot(text: str) -> str:
+    raw = unicodedata.normalize("NFKC", text or "")
+    label_pattern = "|".join(
+        re.escape(label)
+        for label in sorted(REGISTRATION_CAPACITY_LABELS, key=len, reverse=True)
+    )
+    values: dict[str, str] = {}
+    for line in raw.splitlines():
+        candidate = re.sub(r"^[^\w\u3400-\u9fff]+", "", line.strip())
+        match = re.match(
+            rf"(?P<label>{label_pattern})\s*[|｜:：]\s*"
+            r"(?P<value>\*{0,2}[^*\n]+?\*{0,2})\s*$",
+            candidate,
+            flags=re.I,
+        )
+        if not match:
+            continue
+        label = REGISTRATION_CAPACITY_LABELS[match.group("label")]
+        value = re.sub(r"[`*_~]+", "", match.group("value") or "")
+        value = re.sub(r"\s+", " ", value).strip().lower()
+        if value:
+            values[label] = value
+    return ";".join(f"{key}={values[key]}" for key in sorted(values))
+
+
+def _text_hash_input(
+    normalized: str,
+    registration_open_time: str,
+    registration_snapshot: str,
+) -> str:
+    parts = [normalized]
+    if registration_open_time:
+        parts.append("registration open time " + registration_open_time)
+    if registration_snapshot:
+        parts.append("registration snapshot " + registration_snapshot)
+    return "\n".join(parts)
 
 
 def classify_activity(text: str) -> str:
@@ -749,8 +795,13 @@ def build_profile(
         else:
             normalized = normalize_for_text_dedup(text)
         registration_open_time = _extract_registration_open_time(text)
+        registration_snapshot = _extract_registration_snapshot(text)
         text_hash = hashlib.sha256(
-            _text_hash_input(normalized, registration_open_time).encode("utf-8")
+            _text_hash_input(
+                normalized,
+                registration_open_time,
+                registration_snapshot,
+            ).encode("utf-8")
         ).hexdigest()
         lottery_identity = ""
         lottery_global_identity = ""
@@ -807,14 +858,20 @@ def build_profile(
             "ttl_minutes": policy_ttl,
             "identity_fallback": identity_fallback,
             "registration_open_time": registration_open_time,
+            "registration_snapshot": registration_snapshot,
         }
 
     activity = classify_activity(text)
     ttl_policy = ttl_policy_for_text(text)
     normalized = normalize_for_text_dedup(text)
     registration_open_time = _extract_registration_open_time(text)
+    registration_snapshot = _extract_registration_snapshot(text)
     text_hash = hashlib.sha256(
-        _text_hash_input(normalized, registration_open_time).encode("utf-8")
+        _text_hash_input(
+            normalized,
+            registration_open_time,
+            registration_snapshot,
+        ).encode("utf-8")
     ).hexdigest()
     lottery_identity = extract_lottery_identity(text) if activity in {"lottery", "joint_lottery"} else ""
     lottery_global_identity = (
@@ -848,6 +905,7 @@ def build_profile(
         "lottery_mode": "id" if lottery_identity else "",
         "dedup_strategy": dedup_strategy,
         "registration_open_time": registration_open_time,
+        "registration_snapshot": registration_snapshot,
     }
 
 

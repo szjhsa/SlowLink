@@ -10,6 +10,7 @@ from telethon.errors import FloodWaitError
 
 from config import (
     FORWARD_SOURCE_MAX_AGE_SECONDS,
+    JOB_MAX_PROCESSING_SECONDS,
     LISTENER_WORKERS,
     LOG_VERBOSE,
     MESSAGE_MAX_AGE_SECONDS,
@@ -177,6 +178,53 @@ class BotManager:
         self._dedup_settings = (0.0, True, "strict", 20, 20)
         self._monitor_filter_dirty = True
 
+    def _mark_business_received(self) -> None:
+        try:
+            set_value("listener_last_received_ts", str(int(time.time())))
+        except Exception:
+            pass
+
+    def _mark_business_progress(self) -> None:
+        try:
+            now = str(int(time.time()))
+            set_value("listener_last_progress_ts", now)
+            set_value("listener_job_stalled", "0")
+        except Exception:
+            pass
+
+    def _mark_business_stalled(self, reason: str) -> None:
+        try:
+            set_value("listener_job_stalled", "1")
+            set_value("listener_job_stalled_reason", str(reason)[:200])
+            set_value("listener_job_stalled_ts", str(int(time.time())))
+        except Exception:
+            pass
+
+    async def _process_queued_event(
+        self,
+        client: TelegramClient,
+        event,
+        meta: dict,
+    ) -> None:
+        self._mark_business_progress()
+        try:
+            if JOB_MAX_PROCESSING_SECONDS > 0:
+                await asyncio.wait_for(
+                    self._handle_message(client, event, meta),
+                    timeout=JOB_MAX_PROCESSING_SECONDS,
+                )
+            else:
+                await self._handle_message(client, event, meta)
+        except asyncio.TimeoutError:
+            reason = f"单条消息处理超过 {JOB_MAX_PROCESSING_SECONDS}s，已取消任务"
+            self._mark_business_stalled(reason)
+            add_fail({"stage": "job_timeout", "error": reason})
+            push_event("error", reason)
+            return
+        except asyncio.CancelledError:
+            raise
+        self._mark_business_progress()
+
     def _notify_gate_once(self, gate: str, message: str) -> None:
         now = time.monotonic()
         last = float(self._last_gate_event_ts.get(gate) or 0.0)
@@ -304,6 +352,7 @@ class BotManager:
             "window_seconds": window_seconds,
             "normal_queue": self.queue.qsize() if self.queue else 0,
             "priority_queue": self.priority_queue.qsize() if self.priority_queue else 0,
+            "active_jobs": self._active_jobs,
             "monitor_peer_ids": len(self._monitor_peer_ids),
             "monitor_filter_complete": self._monitor_filter_complete,
         })
@@ -643,6 +692,7 @@ class BotManager:
         @client.on(events.NewMessage(incoming=True, func=self._fast_event_filter))
         async def handler(event):
             self._flow_counters["handler_entered"] += 1
+            self._mark_business_received()
             try:
                 chat2 = event.chat
                 if chat2 is not None:
@@ -704,6 +754,7 @@ class BotManager:
                 add_fail({"stage": "queue", "error": "消息队列已满，丢弃一条新消息"})
                 push_event("error", "消息队列已满，可能监听源过多或正则过慢")
 
+        self._mark_business_progress()
         self.started_ok = True
         set_value("bot_status", "running")
         startup_elapsed = time.monotonic() - startup_t0
@@ -907,9 +958,17 @@ class BotManager:
                     if isinstance(item, dict):
                         meta = item
                         meta["queue_type"] = "priority"
-                        await self._handle_message(client, meta.get("event"), meta)
+                        await self._process_queued_event(
+                            client,
+                            meta.get("event"),
+                            meta,
+                        )
                     else:
-                        await self._handle_message(client, item, {"queue_type": "priority"})
+                        await self._process_queued_event(
+                            client,
+                            item,
+                            {"queue_type": "priority"},
+                        )
                 finally:
                     self._active_jobs = max(0, self._active_jobs - 1)
                     self.priority_queue.task_done()
@@ -940,9 +999,17 @@ class BotManager:
                     if isinstance(item, dict):
                         meta = item
                         meta["queue_type"] = "normal"
-                        await self._handle_message(client, meta.get("event"), meta)
+                        await self._process_queued_event(
+                            client,
+                            meta.get("event"),
+                            meta,
+                        )
                     else:
-                        await self._handle_message(client, item, {"queue_type": "normal"})
+                        await self._process_queued_event(
+                            client,
+                            item,
+                            {"queue_type": "normal"},
+                        )
                 finally:
                     self._active_jobs = max(0, self._active_jobs - 1)
                     self.queue.task_done()
@@ -1333,6 +1400,10 @@ class BotManager:
                     add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
                     self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
                     push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
+        except asyncio.CancelledError:
+            self._release_pending_dedup(reserved_identity_keys, dedup_profile)
+            self._requeue_pending_duplicates(reserved_identity_keys)
+            raise
         except FloodWaitError as e:
             self._release_pending_dedup(reserved_identity_keys, dedup_profile)
             self._requeue_pending_duplicates(reserved_identity_keys)
@@ -1499,6 +1570,7 @@ class BotManager:
                         continue
                     self._active_jobs += 1
                     try:
+                        self._mark_business_progress()
                         if delivery_key:
                             mark_target_state(
                                 r,
@@ -1506,19 +1578,41 @@ class BotManager:
                                 target,
                                 "pending",
                             )
-                        await self._send_with_retry(
+                        send_coro = self._send_with_retry(
                             client,
                             target,
                             text,
                             2,
                             delivery_key=delivery_key,
                         )
+                        if JOB_MAX_PROCESSING_SECONDS > 0:
+                            await asyncio.wait_for(
+                                send_coro,
+                                timeout=JOB_MAX_PROCESSING_SECONDS,
+                            )
+                        else:
+                            await send_coro
                         if delivery_key:
                             mark_target_state(
                                 r,
                                 delivery_key,
                                 target,
                                 "sent",
+                            )
+                        self._mark_business_progress()
+                    except asyncio.TimeoutError:
+                        reason = (
+                            "失败队列重试超过 "
+                            f"{JOB_MAX_PROCESSING_SECONDS}s，已取消任务"
+                        )
+                        self._mark_business_stalled(reason)
+                        add_fail({"stage": "retry_job_timeout", "error": reason})
+                        if delivery_key:
+                            mark_target_state(
+                                r,
+                                delivery_key,
+                                target,
+                                "failed",
                             )
                     except Exception:
                         if delivery_key:

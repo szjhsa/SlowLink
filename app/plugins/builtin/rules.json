@@ -33,7 +33,10 @@
     "registration_success_pattern": "(?:自由|定时|开放)?注册成功(?=$|\\s|[-—:：|，。!！])",
     "registration_account_markers": ["创建了", "账号有效期", "到期时间"],
     "open_registration_states": ["true", "on", "enabled", "1", "已开启", "开启", "开放"],
-    "closed_registration_states": ["false", "off", "disabled", "0", "已关闭", "关闭", "未开放"]
+    "closed_registration_states": ["false", "off", "disabled", "0", "已关闭", "关闭", "未开放"],
+    "lottery_time_labels": ["截止时间", "截止日期", "开奖时间", "开奖日期", "定时开奖", "活动截止"],
+    "lottery_expired_grace_minutes": 5,
+    "lottery_timezone": "Asia/Shanghai"
   },
   "code_rules": {
     "enable_strong_codes": true,

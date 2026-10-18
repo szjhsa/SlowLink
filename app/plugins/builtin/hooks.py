@@ -5,6 +5,8 @@ lottery knowledge stays in this plugin package.
 """
 
 import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import regex as _regex
 
@@ -69,6 +71,21 @@ LOTTERY_RESULT_RE = _regex.compile(
     r"中奖名单(?:如下)?\s*[:：]?\s*$|中奖群友\s*[:：]?\s*$|"
     r"幸运名单公布|获奖名单\s*[:：]?\s*$|恭喜以下中奖|恭喜中奖"
     r")[^\n]*$"
+)
+DEFAULT_LOTTERY_TIME_LABELS = (
+    "截止时间",
+    "截止日期",
+    "开奖时间",
+    "开奖日期",
+    "定时开奖",
+    "活动截止",
+)
+LOTTERY_DATETIME_RE = re.compile(
+    r"(?P<year>\d{4})[-/年](?P<month>\d{1,2})[-/月](?P<day>\d{1,2})"
+    r"(?:日)?\s+"
+    r"(?P<hour>\d{1,2})(?:时|:)(?P<minute>\d{1,2})"
+    r"(?:(?:分|:)(?P<second>\d{1,2}))?(?:秒)?",
+    re.I,
 )
 
 CK_CANDIDATE_RE = _regex.compile(
@@ -361,6 +378,80 @@ def _has_any(text: str, words) -> bool:
     return any(str(word or "").lower() in low for word in words if str(word or ""))
 
 
+def _parse_lottery_datetime(value: str, tz: ZoneInfo):
+    text = re.sub(r"[`*_~]+", " ", str(value or ""))
+    match = LOTTERY_DATETIME_RE.search(text)
+    if not match:
+        return None
+    try:
+        return datetime(
+            int(match.group("year")),
+            int(match.group("month")),
+            int(match.group("day")),
+            int(match.group("hour")),
+            int(match.group("minute")),
+            int(match.group("second") or 0),
+            tzinfo=tz,
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _lottery_expired(payload: dict, now: datetime | None = None) -> bool:
+    config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+    timezone_name = str(config.get("lottery_timezone") or "Asia/Shanghai")
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception:
+        tz = ZoneInfo("Asia/Shanghai")
+    text = str(payload.get("text") or "")
+    lines = text.splitlines()
+    raw_labels = config.get("lottery_time_labels")
+    labels = (
+        [str(value) for value in raw_labels if str(value).strip()]
+        if isinstance(raw_labels, list)
+        else list(DEFAULT_LOTTERY_TIME_LABELS)
+    )
+    labels = labels or list(DEFAULT_LOTTERY_TIME_LABELS)
+    label_re = re.compile(
+        r"^(?P<label>"
+        + "|".join(
+            re.escape(label)
+            for label in sorted(labels, key=len, reverse=True)
+        )
+        + r")\s*[:：]?\s*(?P<value>.*)$",
+        re.I,
+    )
+    event_times = []
+    for index, line in enumerate(lines):
+        candidate = re.sub(r"^[^\w\u3400-\u9fff]+", "", line.strip())
+        match = label_re.match(candidate)
+        if not match:
+            continue
+        value = str(match.group("value") or "").strip()
+        parsed = _parse_lottery_datetime(value, tz)
+        if parsed is None:
+            for following in lines[index + 1:]:
+                if following.strip():
+                    parsed = _parse_lottery_datetime(following, tz)
+                    break
+        if parsed is not None:
+            event_times.append(parsed)
+    if not event_times:
+        return False
+    current = now or datetime.now(tz)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=tz)
+    try:
+        grace_minutes = max(
+            0,
+            int(config.get("lottery_expired_grace_minutes", 5)),
+        )
+    except (TypeError, ValueError):
+        grace_minutes = 5
+    return max(event_times) + timedelta(minutes=grace_minutes) < current
+
+
 def _usage_notice(payload: dict, normalized: str, compact: str) -> bool:
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
     code_line_re = _compile_pattern(config.get("code_line_pattern"), re.I)
@@ -630,6 +721,12 @@ def match_plugin_event(payload):
             "matched": False,
             "suppressed": True,
             "reason": "lottery_result",
+        }
+    if _lottery_expired(payload):
+        return {
+            "matched": False,
+            "suppressed": True,
+            "reason": "lottery_expired",
         }
 
     def _code_detail():

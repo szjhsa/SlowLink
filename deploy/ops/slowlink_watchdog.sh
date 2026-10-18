@@ -9,6 +9,7 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-5}"
 CPU_THRESHOLD="${CPU_THRESHOLD:-80}"
 HIGH_COUNT_LIMIT="${HIGH_COUNT_LIMIT:-6}"
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-600}"
+BUSINESS_STALL_SECONDS="${BUSINESS_STALL_SECONDS:-600}"
 CLEANUP_INTERVAL="${CLEANUP_INTERVAL:-86400}"
 LOG_FILE="${LOG_FILE:-/opt/slowlink/watchdog.log}"
 STACK_DUMP_PATH="${STACK_DUMP_PATH:-/tmp/slowlink_python_stack.log}"
@@ -16,6 +17,7 @@ STACK_SAMPLE_COUNT="${STACK_SAMPLE_COUNT:-3}"
 STACK_SAMPLE_INTERVAL="${STACK_SAMPLE_INTERVAL:-1}"
 
 high_count=0
+business_stall_count=0
 last_restart=0
 last_cpu_usage=0
 last_cpu_time=0
@@ -23,6 +25,7 @@ last_cpu_path=""
 last_caddy_attempt=0
 last_cleanup_ts=0
 cpu=""
+business_is_stalled=0
 
 log() {
   ts="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -69,6 +72,30 @@ sample_container_cpu() {
   cpu=$(((delta + denominator / 2) / denominator))
   last_cpu_usage="$usage"
   last_cpu_time="$now"
+}
+
+sample_business_stall() {
+  business_is_stalled=0
+  now="$(date +%s)"
+  result="$(docker exec "$REDIS_CONTAINER" redis-cli --raw EVAL '
+    local flow = cjson.decode(redis.call("GET", "listener_flow_stats") or "{}")
+    local now = tonumber(ARGV[1])
+    local stall = tonumber(ARGV[2])
+    local queue = (tonumber(flow["normal_queue"]) or 0) + (tonumber(flow["priority_queue"]) or 0)
+    local active = tonumber(flow["active_jobs"]) or 0
+    local progress = tonumber(redis.call("GET", "listener_last_progress_ts") or "0")
+    local received = tonumber(redis.call("GET", "listener_last_received_ts") or "0")
+    local stalled = redis.call("GET", "listener_job_stalled") == "1"
+    if not stalled and (queue > 0 or active > 0) then
+      if progress > 0 then
+        stalled = (now - progress) >= stall
+      elseif received > 0 then
+        stalled = (now - received) >= stall
+      end
+    end
+    if stalled then return 1 else return 0 end
+  ' 0 "$now" "$BUSINESS_STALL_SECONDS" 2>/dev/null || true)"
+  [ "$result" = "1" ] && business_is_stalled=1
 }
 
 write_thread_ticks() {
@@ -181,16 +208,18 @@ cleanup_docker() {
   docker builder prune -f --filter until=24h >> "$LOG_FILE" 2>&1 || true
 }
 
-log "watchdog started: container=$APP_CONTAINER threshold=${CPU_THRESHOLD}% count=$HIGH_COUNT_LIMIT interval=${CHECK_INTERVAL}s cooldown=${COOLDOWN_SECONDS}s"
+log "watchdog started: container=$APP_CONTAINER threshold=${CPU_THRESHOLD}% count=$HIGH_COUNT_LIMIT interval=${CHECK_INTERVAL}s cooldown=${COOLDOWN_SECONDS}s stall=${BUSINESS_STALL_SECONDS}s"
 ensure_caddy
 
 while true; do
   ensure_caddy
   cleanup_docker
   sample_container_cpu || true
+  sample_business_stall || true
   case "$cpu" in
     ''|*[!0-9]*)
       high_count=0
+      business_stall_count=0
       sleep "$CHECK_INTERVAL"
       continue
       ;;
@@ -198,7 +227,12 @@ while true; do
 
   if [ "$cpu" -ge "$CPU_THRESHOLD" ]; then
     high_count=$((high_count + 1))
-    log "high CPU: ${cpu}% (${high_count}/${HIGH_COUNT_LIMIT})"
+    if [ "$business_is_stalled" -eq 1 ]; then
+      business_stall_count=$((business_stall_count + 1))
+    else
+      business_stall_count=0
+    fi
+    log "high CPU: ${cpu}% (${high_count}/${HIGH_COUNT_LIMIT}), business_stalled=${business_is_stalled} (${business_stall_count}/${HIGH_COUNT_LIMIT})"
     if [ "$high_count" -eq 1 ]; then
       snapshot
       capture_python_state "first high CPU sample"
@@ -208,14 +242,17 @@ while true; do
       log "CPU recovered: ${cpu}% (reset high count)"
     fi
     high_count=0
+    business_stall_count=0
   fi
 
   now="$(date +%s)"
   if [ "$high_count" -ge "$HIGH_COUNT_LIMIT" ]; then
     since=$((now - last_restart))
-    if [ "$last_restart" -eq 0 ] || [ "$since" -ge "$COOLDOWN_SECONDS" ]; then
+    if [ "$business_stall_count" -lt "$HIGH_COUNT_LIMIT" ]; then
+      log "restart deferred: high CPU but business is still progressing"
+    elif [ "$last_restart" -eq 0 ] || [ "$since" -ge "$COOLDOWN_SECONDS" ]; then
       snapshot
-      log "restarting $APP_CONTAINER after sustained high CPU"
+      log "restarting $APP_CONTAINER after sustained high CPU and business stall"
       if docker restart "$APP_CONTAINER" >> "$LOG_FILE" 2>&1; then
         log "restart completed for $APP_CONTAINER"
         last_restart="$now"
@@ -226,6 +263,7 @@ while true; do
       log "restart skipped by cooldown: ${since}s/${COOLDOWN_SECONDS}s"
     fi
     high_count=0
+    business_stall_count=0
   fi
 
   sleep "$CHECK_INTERVAL"
