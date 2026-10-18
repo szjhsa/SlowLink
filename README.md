@@ -108,8 +108,6 @@ SlowLink 1.0 把“内置规则”从核心引擎中分离出来：核心只负�
 - 插件包必须包含 `plugin.json` 和 `rules.json`；上传后会校验版本、路径和格式。
 - 纯净版可以不带任何插件运行，上传插件后即可恢复成对应专属规则。
 
-插件仓库：[szjhsa/SlowLink-Plugins](https://github.com/szjhsa/SlowLink-Plugins)
-
 ## 数据与稳定性
 
 - 更新只重建 `slowlink_app`；正常运行且域名未变的 `slowlink_caddy` 会保持不动，也不会停止 `slowlink_redis` 或主机上的其他服务。
