@@ -38,6 +38,7 @@ ACTIVE_DEDUP_PATTERNS: list[str] = []
 DEDUP_META_PATTERNS: list[str] = ["dedup:meta:*"]
 PLUGIN_DEFAULTS: dict[str, str] = {}
 KNOWN_REGEX_RULE_MIGRATIONS: dict[str, str] = {}
+WILDCARD_IDENTITY_PREFIX_MIGRATIONS: dict[str, str] = {}
 PLUGIN_STORAGE_CONFIG: dict[str, Any] = {}
 STATS_HASH_MAX_FIELDS = 500
 STATS_HASH_PRUNE_WATERMARK = 400
@@ -74,7 +75,8 @@ def reload_builtins() -> None:
     """Load plugin-owned storage defaults, migrations, and cache keys."""
     global STATS_HASH_KEYS, COLLISION_STATS_KEY, COLLISION_LIST
     global COLLISION_EXEMPT_PREFIX, ACTIVE_DEDUP_PATTERNS, DEDUP_META_PATTERNS
-    global PLUGIN_DEFAULTS, KNOWN_REGEX_RULE_MIGRATIONS, PLUGIN_STORAGE_CONFIG
+    global PLUGIN_DEFAULTS, KNOWN_REGEX_RULE_MIGRATIONS
+    global WILDCARD_IDENTITY_PREFIX_MIGRATIONS, PLUGIN_STORAGE_CONFIG
     try:
         from plugin_runtime import call_hook
 
@@ -116,6 +118,12 @@ def reload_builtins() -> None:
     KNOWN_REGEX_RULE_MIGRATIONS = (
         {str(key): str(value) for key, value in migrations.items()}
         if isinstance(migrations, dict)
+        else {}
+    )
+    wildcard_migrations = config.get("wildcard_identity_prefix_migrations")
+    WILDCARD_IDENTITY_PREFIX_MIGRATIONS = (
+        {str(key): str(value) for key, value in wildcard_migrations.items()}
+        if isinstance(wildcard_migrations, dict)
         else {}
     )
     aliases = config.get("aliases")
@@ -634,6 +642,7 @@ def ensure_defaults() -> None:
     for k, v in defaults.items():
         r.setnx(k, v)
     migrate_known_regex_rules()
+    migrate_wildcard_identity_prefixes()
 
 
 def migrate_known_regex_rules() -> int:
@@ -655,9 +664,84 @@ def migrate_known_regex_rules() -> int:
             if disabled:
                 pipe.sadd("regex_rules_disabled", new)
         pipe.execute()
+        try:
+            from rule_policy import policy_key
+
+            for old, new, _enabled, _disabled in replacements:
+                old_key = policy_key(old)
+                new_key = policy_key(new)
+                raw_policy = r.hget("rule_policies", old_key)
+                if raw_policy:
+                    r.hset("rule_policies", new_key, raw_policy)
+                    r.hdel("rule_policies", old_key)
+            try:
+                from rule_policy import clear_cache as clear_rule_policy_cache
+
+                clear_rule_policy_cache()
+            except Exception:
+                pass
+        except Exception:
+            pass
         return len(replacements)
     except Exception:
         return 0
+
+
+def migrate_wildcard_identity_prefixes() -> int:
+    migrations = dict(WILDCARD_IDENTITY_PREFIX_MIGRATIONS)
+    if not migrations:
+        return 0
+    migrated = 0
+    patterns_key = "dedup:wildcard_identity_patterns"
+    try:
+        raw_members = r.zrange(patterns_key, 0, -1, withscores=True)
+    except Exception:
+        raw_members = []
+    for item in raw_members:
+        if isinstance(item, (tuple, list)) and len(item) >= 2:
+            member, score = str(item[0]), item[1]
+        else:
+            member, score = str(item), None
+        for old, new in migrations.items():
+            if not member.startswith(old):
+                continue
+            replacement = new + member[len(old):]
+            try:
+                if score is None:
+                    r.zadd(patterns_key, {replacement: 1})
+                else:
+                    r.zadd(patterns_key, {replacement: score})
+                r.zrem(patterns_key, member)
+                migrated += 1
+            except Exception:
+                pass
+            break
+
+    try:
+        identity_keys = list(r.scan_iter(match="dedup:identity:*", count=200))
+    except Exception:
+        identity_keys = []
+    for identity_key in identity_keys:
+        try:
+            value = r.get(identity_key)
+            if not value:
+                continue
+            for old, new in migrations.items():
+                if not value.startswith(old):
+                    continue
+                replacement = new + value[len(old):]
+                new_key = "dedup:identity:" + sha(replacement)
+                ttl = int(r.ttl(identity_key) or 0)
+                if ttl > 0:
+                    r.set(new_key, replacement, ex=ttl, nx=True)
+                else:
+                    r.set(new_key, replacement, nx=True)
+                r.delete(identity_key)
+                migrated += 1
+                break
+        except Exception:
+            continue
+    return migrated
 
 
 # ---- V1.25 cache / record management ----

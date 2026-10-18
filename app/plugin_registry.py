@@ -223,12 +223,61 @@ def _validate_manifest(item: dict) -> None:
         raise ValueError(f"插件需要 SlowLink >= {item.get('min_core_version')}，当前为 {APP_VERSION}")
 
 
+def _validate_format_gates(gates) -> None:
+    if gates is None:
+        return
+    if not isinstance(gates, dict):
+        raise ValueError("format_gates 必须是对象")
+    for name, profile in gates.items():
+        if not isinstance(profile, dict):
+            raise ValueError(f"format_gates.{name} 必须是对象")
+        applies_to = profile.get("applies_to_rule_types", [])
+        if not isinstance(applies_to, list) or not all(
+            isinstance(value, str) and value.strip() for value in applies_to
+        ):
+            raise ValueError(
+                f"format_gates.{name}.applies_to_rule_types 必须是字符串数组"
+            )
+        for field in ("all", "any", "exclude"):
+            values = profile.get(field, [])
+            if not isinstance(values, list) or not all(
+                isinstance(value, str) and value.strip() for value in values
+            ):
+                raise ValueError(f"format_gates.{name}.{field} 必须是字符串数组")
+        for field in ("regex_any", "regex_min_hits_patterns"):
+            patterns = profile.get(field, [])
+            if not isinstance(patterns, list):
+                raise ValueError(f"format_gates.{name}.{field} 必须是数组")
+            for index, pattern in enumerate(patterns):
+                _validate_regex(
+                    pattern,
+                    f"format_gates.{name}.{field}.{index}",
+                    _regex_engine="re",
+                    flags=re.I | re.M,
+                )
+        try:
+            min_hits = int(profile.get("regex_min_hits", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"format_gates.{name}.regex_min_hits 必须是整数"
+            ) from exc
+        if min_hits < 0:
+            raise ValueError(
+                f"format_gates.{name}.regex_min_hits 不能为负数"
+            )
+        if min_hits > len(profile.get("regex_min_hits_patterns", [])):
+            raise ValueError(
+                f"format_gates.{name}.regex_min_hits 超过规则数量"
+            )
+
+
 def validate_rules_data(rules: dict) -> None:
     if not isinstance(rules, dict):
         raise ValueError("rules.json 格式无效")
     for section in ("matcher", "code_rules", "dedup", "flow"):
         if not isinstance(rules.get(section), dict):
             raise ValueError(f"rules.json 缺少 section：{section}")
+    _validate_format_gates(rules.get("format_gates"))
 
     matcher = rules["matcher"]
     _validate_pattern_fields(matcher, "matcher", _regex_engine="re", flags=re.I | re.M)

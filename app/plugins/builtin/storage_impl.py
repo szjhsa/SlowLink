@@ -28,6 +28,8 @@ ACTIVE_DEDUP_PATTERNS = [
     "dedup:link:*",
     "dedup:code:*",
     "dedup:identity:*",
+    "dedup:identity_recent",
+    "dedup:wildcard_identity_patterns",
     "dedup:lottery:*",
     "dedup:lottery-template:*",
     "dedup:register_snapshot:*",
@@ -50,9 +52,19 @@ LEGACY_SYMBOL_PURE_CODE_TRIGGER_RULE = (
     r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
     r"(?:Register|Renew)_(?:[^\s*`\u3400-\u9fff]|数字|字母)+$"
 )
-SAFE_PURE_CODE_TRIGGER_RULE = (
+LEGACY_SAFE_PURE_CODE_TRIGGER_RULE_NO_LIST_PREFIX = (
     r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
     r"(?:Register|Renew)_[^\s*`]+$"
+)
+LEGACY_SAFE_PURE_CODE_TRIGGER_RULE_LIST_NO_STARS = (
+    r"^(?!.*码使用)(?:[ \t]*\d{1,4}[.、)]\s*)?"
+    r"(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
+    r"(?:Register|Renew)_[^\s*`]+$"
+)
+SAFE_PURE_CODE_TRIGGER_RULE = (
+    r"^(?!.*码使用)(?:[ \t]*\d{1,4}[.、)]\s*)?"
+    r"(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-"
+    r"(?:Register|Renew)_[^\s`]+$"
 )
 LEGACY_SAFE_WHITELIST_TRIGGER_RULE = (
     r"(?:^|(?<=[\s:：，,]))[^\s*`\-:：，,]+(?:-[^\s*`\-:：，,]+)*-Whitelist_"
@@ -107,6 +119,8 @@ KNOWN_REGEX_RULE_MIGRATIONS = {
     LEGACY_SAFE_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
     LEGACY_MASKED_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
     LEGACY_SYMBOL_PURE_CODE_TRIGGER_RULE: SAFE_PURE_CODE_TRIGGER_RULE,
+    LEGACY_SAFE_PURE_CODE_TRIGGER_RULE_NO_LIST_PREFIX: SAFE_PURE_CODE_TRIGGER_RULE,
+    LEGACY_SAFE_PURE_CODE_TRIGGER_RULE_LIST_NO_STARS: SAFE_PURE_CODE_TRIGGER_RULE,
     LEGACY_SAFE_WHITELIST_TRIGGER_RULE: SAFE_WHITELIST_TRIGGER_RULE,
     LEGACY_GUESS_WHITELIST_TRIGGER_RULE: SAFE_WHITELIST_TRIGGER_RULE,
     LEGACY_REGISTRATION_ANNOUNCEMENT_RULE: SAFE_REGISTRATION_ANNOUNCEMENT_RULE,
@@ -114,6 +128,9 @@ KNOWN_REGEX_RULE_MIGRATIONS = {
     LEGACY_LOTTERY_ACTIVITY_RULE: SAFE_LOTTERY_ACTIVITY_RULE,
     LEGACY_PRIZE_CONTENT_TRIGGER_RULE: SAFE_PRIZE_CONTENT_TRIGGER_RULE,
     LEGACY_COMBINED_PRIZE_LOTTERY_RULE: SAFE_COMBINED_PRIZE_LOTTERY_RULE,
+}
+KNOWN_WILDCARD_IDENTITY_PREFIX_MIGRATIONS = {
+    "wildcard_register_renew:": "wildcard:",
 }
 
 
@@ -136,6 +153,9 @@ def storage_config() -> dict:
         "active_dedup_patterns": list(ACTIVE_DEDUP_PATTERNS),
         "dedup_meta_patterns": list(DEDUP_META_PATTERNS),
         "known_regex_rule_migrations": dict(KNOWN_REGEX_RULE_MIGRATIONS),
+        "wildcard_identity_prefix_migrations": dict(
+            KNOWN_WILDCARD_IDENTITY_PREFIX_MIGRATIONS
+        ),
         "aliases": {
             "LEGACY_PURE_CODE_TRIGGER_RULE": LEGACY_PURE_CODE_TRIGGER_RULE,
             "LEGACY_SAFE_PURE_CODE_TRIGGER_RULE": LEGACY_SAFE_PURE_CODE_TRIGGER_RULE,

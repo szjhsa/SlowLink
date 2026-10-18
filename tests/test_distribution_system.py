@@ -190,9 +190,11 @@ class DistributionSystemTests(unittest.TestCase):
             self.assertTrue(all(name == "LICENSE" or name.startswith("app/") for name in app_members))
             self.assertIn("LICENSE", app_members)
             self.assertFalse(
-                any("plugins/" in member for member in app_members + full_members),
-                "release must not bundle rule plugins",
+                any(member.startswith("plugins/") for member in app_members + full_members),
+                "release must not bundle the repository-level plugin workspace",
             )
+            self.assertIn("app/plugins/builtin/plugin.json", app_members)
+            self.assertIn("app/plugins/builtin/rules.json", full_members)
             for required in (
                 "LICENSE",
                 "VERSION",

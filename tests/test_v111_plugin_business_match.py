@@ -163,7 +163,10 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
             "教程：\n📝 开放注册中",
         ):
             with self.subTest(text=text):
-                self.assertIsNone(plugin_match(text))
+                result = plugin_match(text)
+                if result is not None:
+                    self.assertFalse(result.get("matched"))
+                    self.assertTrue(result.get("suppressed"))
 
     def test_exact_short_lines_still_auto_trigger(self):
         for text in ("📝 开放注册中", "虎揍快来"):

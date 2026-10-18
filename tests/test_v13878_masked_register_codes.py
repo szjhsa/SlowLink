@@ -147,6 +147,38 @@ class MaskedRegisterCodeV13878Tests(unittest.TestCase):
         self.assertEqual(detail.get("code"), code)
         self.assertEqual(detail.get("identity"), "strong_register_renew:" + code)
 
+    def test_star_masked_register_code_is_fully_extracted(self):
+        code_rules = load_code_rules()
+        masked = "ChaPanda-30-Register_kLa**guKMq"
+        expected = "ChaPanda-30-Register_kLaguKMq"
+
+        detail = code_rules.extract_code_detail(masked)
+        identities = code_rules.extract_code_identities(masked)
+
+        self.assertEqual(detail.get("code"), expected)
+        self.assertEqual(detail.get("identity"), "strong_register_renew:" + expected)
+        self.assertIn(
+            "wildcard:ChaPanda-30-Register_kLa**guKMq",
+            identities,
+        )
+        self.assertEqual(
+            code_rules.normalize_code_identity(identities[0]),
+            "wildcard:chapanda-30-register_kla**gukmq",
+        )
+
+    def test_chinese_and_symbol_mask_pattern_is_extracted(self):
+        code_rules = load_code_rules()
+        masked = "帝服-30-Register_mK@*中x"
+
+        detail = code_rules.extract_code_detail(masked)
+        identities = code_rules.extract_code_identities(masked)
+
+        self.assertEqual(detail.get("code"), "帝服-30-Register_mK@中x")
+        self.assertIn(
+            "wildcard:帝服-30-Register_mK@*中x",
+            identities,
+        )
+
     def test_existing_ascii_pure_code_rule_migrates_to_masked_rule(self):
         redis_store = load_redis_store(FakeRedisClient({
             r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[A-Za-z0-9_-]+$",

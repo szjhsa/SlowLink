@@ -226,7 +226,12 @@ def _is_closed_register_notice(normalized: str, compact: str) -> bool:
     return _guard_flags(normalized, compact)[1]
 
 
-def _plugin_event_match(original: str, normalized: str, compact: str) -> dict | None:
+def _plugin_event_match(
+    original: str,
+    normalized: str,
+    compact: str,
+    rule_policy: dict | None = None,
+) -> dict | None:
     """Ask the active plugin whether this is one of its business events."""
     result = call_hook(
         "match_plugin_event",
@@ -235,6 +240,8 @@ def _plugin_event_match(original: str, normalized: str, compact: str) -> dict | 
             "normalized": normalized,
             "compact": compact,
             "config": builtin_section("matcher", {}) or {},
+            "format_gates": builtin_section("format_gates", {}) or {},
+            "rule_policy": rule_policy if isinstance(rule_policy, dict) else {},
         },
         default=None,
     )
@@ -325,7 +332,13 @@ def analyze_message(text: str) -> dict:
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
         if _safe_search(cre, original):
-            plugin_match = _plugin_event_match(original, normalized, compact)
+            policy_fields = _rule_policy_fields(raw)
+            plugin_match = _plugin_event_match(
+                original,
+                normalized,
+                compact,
+                policy_fields.get("rule_policy"),
+            )
             if plugin_match and plugin_match.get("suppressed"):
                 return {
                     "matched": False,
@@ -349,7 +362,6 @@ def analyze_message(text: str) -> dict:
                 or extract_code_detail(normalized)
                 or extract_code_detail(compact)
             )
-            policy_fields = _rule_policy_fields(raw)
             if (
                 plugin_match
                 and not policy_fields.get("rule_policy")
@@ -418,7 +430,13 @@ def match_rules(text: str) -> tuple[bool, str]:
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
         if _safe_search(cre, text):
-            plugin_match = _plugin_event_match(text, normalized, compact)
+            policy_fields = _rule_policy_fields(raw)
+            plugin_match = _plugin_event_match(
+                text,
+                normalized,
+                compact,
+                policy_fields.get("rule_policy"),
+            )
             if plugin_match and plugin_match.get("suppressed"):
                 return False, ""
             return True, raw
@@ -499,7 +517,13 @@ def match_rule_details(text: str) -> dict:
     regexes = rules.get("regexes") or []
     for raw, cre in regexes:
         if _safe_search(cre, original):
-            plugin_match = _plugin_event_match(original, normalized, compact)
+            policy_fields = _rule_policy_fields(raw)
+            plugin_match = _plugin_event_match(
+                original,
+                normalized,
+                compact,
+                policy_fields.get("rule_policy"),
+            )
             if plugin_match and plugin_match.get("suppressed"):
                 return {
                     "matched": False,

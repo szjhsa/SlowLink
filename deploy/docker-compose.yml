@@ -44,6 +44,9 @@ services:
       - WEB_HOST=0.0.0.0
       - WEB_PORT=8080
       - SESSION_PATH=/app/sessions/slowlink
+      - MESSAGE_MAX_AGE_SECONDS=${MESSAGE_MAX_AGE_SECONDS:-1800}
+      - FORWARD_SOURCE_MAX_AGE_SECONDS=${FORWARD_SOURCE_MAX_AGE_SECONDS:-7200}
+      - QUEUE_MAX_WAIT_SECONDS=${QUEUE_MAX_WAIT_SECONDS:-300}
 
   caddy:
     image: caddy:2.10.2-alpine

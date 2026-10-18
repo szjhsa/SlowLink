@@ -8,8 +8,26 @@ from typing import Optional
 from telethon import TelegramClient, events, utils as telethon_utils
 from telethon.errors import FloodWaitError
 
-from config import SESSION_PATH, LISTENER_WORKERS, LOG_VERBOSE
+from config import (
+    FORWARD_SOURCE_MAX_AGE_SECONDS,
+    LISTENER_WORKERS,
+    LOG_VERBOSE,
+    MESSAGE_MAX_AGE_SECONDS,
+    QUEUE_MAX_WAIT_SECONDS,
+    SESSION_PATH,
+)
 from dedup import check_and_mark, release_dedup
+from delivery_state import (
+    build_delivery_key,
+    mark_target_state,
+    read_target_state,
+    should_send_target,
+)
+from identity_store import (
+    find_identity_match,
+    release_identity,
+    remember_identity,
+)
 from link_builder import (
     build_entity_cache_from_index,
     build_entity_index,
@@ -46,6 +64,10 @@ MAX_NORMAL_WORKERS = 3
 WORKER_EXPAND_NORMAL_QUEUE = 8
 WORKER_EXPAND_PRIORITY_QUEUE = 4
 WORKER_SHRINK_IDLE_SECONDS = 45.0
+PENDING_DUPLICATE_TTL_SECONDS = 300.0
+PENDING_DUPLICATE_MAX_KEYS = 500
+PENDING_DUPLICATE_MAX_EVENTS = 1000
+PENDING_DUPLICATE_MAX_EVENTS_PER_KEY = 20
 
 
 class BotManager:
@@ -82,6 +104,7 @@ class BotManager:
         self._reconnect_reason = ""
         self._dedup_settings = (0.0, True, "strict", 20, 20)  # (ts, enabled, mode, other_minutes, code_minutes)
         self._pending_duplicate_events: dict[str, list] = {}
+        self._last_gate_event_ts = {"message_age": 0.0, "queue_age": 0.0}
         self._monitor_peer_ids = frozenset()
         self._monitor_filter_complete = False
         self._monitor_filter_dirty = True
@@ -96,6 +119,8 @@ class BotManager:
             "queue_full": 0,
             "matched": 0,
             "forwarded": 0,
+            "stale_message": 0,
+            "queue_expired": 0,
         }
 
     def _cached_set(self, key: str, ttl: float = 30.0) -> set[str]:
@@ -151,6 +176,59 @@ class BotManager:
         self._str_cache.clear()
         self._dedup_settings = (0.0, True, "strict", 20, 20)
         self._monitor_filter_dirty = True
+
+    def _notify_gate_once(self, gate: str, message: str) -> None:
+        now = time.monotonic()
+        last = float(self._last_gate_event_ts.get(gate) or 0.0)
+        if now - last < 60:
+            return
+        self._last_gate_event_ts[gate] = now
+        push_event("info", message)
+
+    def _pending_entry_ts(self, item) -> float:
+        try:
+            meta = item[1] if isinstance(item, tuple) and len(item) > 1 else {}
+            return float(
+                (meta or {}).get("pending_ts")
+                or (meta or {}).get("enqueue_ts")
+                or 0.0
+            )
+        except Exception:
+            return 0.0
+
+    def _prune_pending_duplicates(self, now: float | None = None) -> int:
+        now = float(now if now is not None else time.time())
+        removed = 0
+        for identity_key in list(self._pending_duplicate_events):
+            fresh = []
+            for item in self._pending_duplicate_events.get(identity_key, []):
+                entry_ts = self._pending_entry_ts(item)
+                if entry_ts and now - entry_ts > PENDING_DUPLICATE_TTL_SECONDS:
+                    removed += 1
+                    continue
+                fresh.append(item)
+            if fresh:
+                self._pending_duplicate_events[identity_key] = fresh
+            else:
+                self._pending_duplicate_events.pop(identity_key, None)
+
+        total = sum(len(items) for items in self._pending_duplicate_events.values())
+        if total > PENDING_DUPLICATE_MAX_EVENTS:
+            excess = total - PENDING_DUPLICATE_MAX_EVENTS
+            oldest_keys = sorted(
+                self._pending_duplicate_events,
+                key=lambda key: max(
+                    (self._pending_entry_ts(item) for item in self._pending_duplicate_events[key]),
+                    default=0.0,
+                ),
+            )
+            for identity_key in oldest_keys:
+                if excess <= 0:
+                    break
+                popped = self._pending_duplicate_events.pop(identity_key, [])
+                removed += len(popped)
+                excess -= len(popped)
+        return removed
 
     async def _refresh_entity_cache(self, client: TelegramClient, force: bool = False):
         """Load the persisted entity index first, then fall back to get_dialogs."""
@@ -290,6 +368,9 @@ class BotManager:
             if isinstance(identity_keys, str):
                 identity_keys = [identity_keys] if identity_keys else []
             for identity_key in identity_keys or []:
+                identity_value = r.get(identity_key)
+                if identity_value:
+                    release_identity(r, identity_value)
                 r.delete(identity_key)
             dedup_id = str((dedup_profile or {}).get("dedup_id") or "")
             if dedup_id:
@@ -300,11 +381,28 @@ class BotManager:
     def _remember_pending_duplicate(self, identity_key: str, event, meta: dict) -> None:
         if not identity_key:
             return
+        now = time.time()
+        self._prune_pending_duplicates(now)
+        if len(self._pending_duplicate_events) >= PENDING_DUPLICATE_MAX_KEYS:
+            oldest_key = min(
+                self._pending_duplicate_events,
+                key=lambda key: max(
+                    (self._pending_entry_ts(item) for item in self._pending_duplicate_events[key]),
+                    default=0.0,
+                ),
+                default="",
+            )
+            if oldest_key:
+                self._pending_duplicate_events.pop(oldest_key, None)
         events = self._pending_duplicate_events.setdefault(identity_key, [])
-        if len(events) < 50:
-            events.append((event, dict(meta)))
+        if len(events) >= PENDING_DUPLICATE_MAX_EVENTS_PER_KEY:
+            events.pop(0)
+        pending_meta = dict(meta)
+        pending_meta["pending_ts"] = now
+        events.append((event, pending_meta))
 
     def _requeue_pending_duplicates(self, identity_keys=()) -> None:
+        self._prune_pending_duplicates()
         if isinstance(identity_keys, str):
             identity_keys = [identity_keys] if identity_keys else []
         for identity_key in identity_keys or []:
@@ -564,6 +662,7 @@ class BotManager:
                 receive_ts = time.time()
                 self._last_message_time = receive_ts
                 msg_ts = None
+                forward_ts = None
                 try:
                     try: _msg = event.message
                     except Exception: _msg = None
@@ -572,9 +671,22 @@ class BotManager:
                         if getattr(dt, "tzinfo", None) is None:
                             dt = dt.replace(tzinfo=timezone.utc)
                         msg_ts = float(dt.timestamp())
+                    fwd_from = getattr(_msg, "fwd_from", None)
+                    fwd_date = getattr(fwd_from, "date", None)
+                    if fwd_date is not None:
+                        if getattr(fwd_date, "tzinfo", None) is None:
+                            fwd_date = fwd_date.replace(tzinfo=timezone.utc)
+                        forward_ts = float(fwd_date.timestamp())
                 except Exception:
                     msg_ts = None
-                payload = {"event": event, "enqueue_ts": receive_ts, "receive_ts": receive_ts, "message_ts": msg_ts}
+                    forward_ts = None
+                payload = {
+                    "event": event,
+                    "enqueue_ts": receive_ts,
+                    "receive_ts": receive_ts,
+                    "message_ts": msg_ts,
+                    "forward_ts": forward_ts,
+                }
                 # Quick priority check uses the same plain/RichMessage extraction as matching.
                 try: raw_text = get_text(event.message)
                 except Exception: raw_text = ""
@@ -856,13 +968,29 @@ class BotManager:
             message_ts = float(message_ts) if message_ts is not None else None
         except Exception:
             message_ts = None
+        forward_ts = meta.get("forward_ts")
+        try:
+            forward_ts = float(forward_ts) if forward_ts is not None else None
+        except Exception:
+            forward_ts = None
         telegram_delay_sec = max(0.0, receive_ts - message_ts) if message_ts else 0.0
         queue_wait_ms = max(0, int((process_ts - enqueue_ts) * 1000))
         perf = {
             "queue_start": qsize_at_start,
             "queue_wait_ms": queue_wait_ms,
+            "queue_age_sec": round(max(0.0, process_ts - enqueue_ts), 3),
             "telegram_delay_sec": round(telegram_delay_sec, 3),
             "queue_type": queue_type,
+            "message_age_sec": (
+                round(max(0.0, process_ts - message_ts), 3)
+                if message_ts
+                else None
+            ),
+            "forward_source_age_sec": (
+                round(max(0.0, process_ts - forward_ts), 3)
+                if forward_ts
+                else None
+            ),
         }
         reserved_identity_keys = []
         dedup_profile = None
@@ -877,6 +1005,63 @@ class BotManager:
             chat_keys = {normalize_chat_value(x) for x in get_chat_keys(chat)}
             monitors = self._cached_set("monitor_chats", ttl=60.0)
             if not monitors or not (chat_keys & monitors):
+                return
+            source_name = self._source_name(chat)
+            if (
+                QUEUE_MAX_WAIT_SECONDS > 0
+                and process_ts - enqueue_ts > QUEUE_MAX_WAIT_SECONDS
+            ):
+                self._flow_counters["queue_expired"] += 1
+                self._record_perf_event(
+                    source_name,
+                    "",
+                    "",
+                    "queue_expired",
+                    perf,
+                    {"max_wait_seconds": QUEUE_MAX_WAIT_SECONDS},
+                )
+                self._notify_gate_once(
+                    "queue_age",
+                    f"队列等待超过 {QUEUE_MAX_WAIT_SECONDS}s，已跳过旧任务",
+                )
+                return
+            if (
+                MESSAGE_MAX_AGE_SECONDS > 0
+                and message_ts
+                and process_ts - message_ts > MESSAGE_MAX_AGE_SECONDS
+            ):
+                self._flow_counters["stale_message"] += 1
+                self._record_perf_event(
+                    source_name,
+                    "",
+                    "",
+                    "stale_message",
+                    perf,
+                    {"max_age_seconds": MESSAGE_MAX_AGE_SECONDS},
+                )
+                self._notify_gate_once(
+                    "message_age",
+                    f"消息发布时间超过 {MESSAGE_MAX_AGE_SECONDS}s，已跳过补收消息",
+                )
+                return
+            if (
+                FORWARD_SOURCE_MAX_AGE_SECONDS > 0
+                and forward_ts
+                and process_ts - forward_ts > FORWARD_SOURCE_MAX_AGE_SECONDS
+            ):
+                self._flow_counters["stale_message"] += 1
+                self._record_perf_event(
+                    source_name,
+                    "",
+                    "",
+                    "stale_forward_source",
+                    perf,
+                    {"max_age_seconds": FORWARD_SOURCE_MAX_AGE_SECONDS},
+                )
+                self._notify_gate_once(
+                    "message_age",
+                    f"转发来源时间超过 {FORWARD_SOURCE_MAX_AGE_SECONDS}s，已跳过",
+                )
                 return
 
             try: _evt_msg = event.message
@@ -896,7 +1081,6 @@ class BotManager:
                 "process_time": format_time(process_ts),
             })
             code_detail = analysis.get("code_detail") or {}
-            source_name = self._source_name(chat)
 
             if rule_policy and not bool(rule_policy.get("forward", True)):
                 add_hit({
@@ -928,6 +1112,12 @@ class BotManager:
             except Exception:
                 _evt_msg2 = None
             link = build_message_link(chat, _evt_msg2, self._cached_str("public_link_domain")) if _evt_msg2 else ""
+            delivery_key = build_delivery_key(
+                link,
+                text,
+                source_name,
+                message_ts,
+            )
             dedup_enabled, mode, _dedup_other, identity_minutes = self._cached_dedup_settings()
             storage_config = get_plugin_storage_config()
             identity_key_prefix = str(
@@ -947,7 +1137,10 @@ class BotManager:
             except Exception:
                 pass
             identity_values = []
-            for candidate in [code_detail.get("identity") or "", *hook_identities]:
+            for candidate in (
+                hook_identities
+                or [code_detail.get("identity") or ""]
+            ):
                 candidate = str(candidate or "").strip()
                 if candidate and candidate not in identity_values:
                     identity_values.append(candidate)
@@ -969,6 +1162,7 @@ class BotManager:
             )
             if identity_values and identity_dedup_enabled:
                 identity_ttl = max(60, effective_identity_minutes * 60)
+                identity_expires_at = time.time() + identity_ttl
                 for identity in identity_values:
                     normalized_identity = call_hook(
                         "normalize_dedup_identity",
@@ -976,19 +1170,41 @@ class BotManager:
                         default=str(identity).lower(),
                     )
                     normalized_identity = str(normalized_identity or identity)
+                    matched_identity = find_identity_match(
+                        r,
+                        normalized_identity,
+                        time.time(),
+                    )
+                    if matched_identity:
+                        duplicate_identity = matched_identity
+                        duplicate_identity_key = (
+                            identity_key_prefix + sha(matched_identity)
+                        )
+                        break
                     identity_key = identity_key_prefix + sha(normalized_identity)
-                    is_new = r.set(identity_key, "1", ex=identity_ttl, nx=True)
+                    is_new = r.set(
+                        identity_key,
+                        normalized_identity,
+                        ex=identity_ttl,
+                        nx=True,
+                    )
                     if not is_new:
                         duplicate_identity = normalized_identity
                         duplicate_identity_key = identity_key
                         break
                     reserved_identity_keys.append(identity_key)
+                    remember_identity(
+                        r,
+                        normalized_identity,
+                        identity_expires_at,
+                    )
             if duplicate_identity:
                 self._remember_pending_duplicate(duplicate_identity_key, event, {
                     "event": event,
                     "receive_ts": receive_ts,
                     "enqueue_ts": enqueue_ts,
                     "message_ts": message_ts,
+                    "forward_ts": forward_ts,
                     "queue_type": "priority",
                 })
                 self._release_pending_dedup(reserved_identity_keys)
@@ -1023,16 +1239,29 @@ class BotManager:
                     return
 
             sent = []
+            already_delivered = []
             failed = []
             perf["before_send_ms"] = int((time.monotonic() - t0) * 1000)
             # Parallel sends to all targets (each has its own retry + jitter)
             async def _send_one_target(target):
+                if not should_send_target(r, delivery_key, target):
+                    return ("skipped", target, None)
                 try:
-                    await self._send_with_retry(client, target, link)
-                    return (True, target, None)
+                    mark_target_state(r, delivery_key, target, "pending")
+                    await self._send_with_retry(
+                        client,
+                        target,
+                        link,
+                        delivery_key=delivery_key,
+                    )
+                    mark_target_state(r, delivery_key, target, "sent")
+                    return ("sent", target, None)
+                except asyncio.CancelledError:
+                    return ("cancelled", target, "cancelled")
                 except Exception as e:
+                    mark_target_state(r, delivery_key, target, "failed")
                     add_fail({"stage": "send", "target": target, "error": str(e), "link": link})
-                    return (False, target, str(e))
+                    return ("failed", target, str(e))
             results = await asyncio.gather(*[_send_one_target(t) for t in targets], return_exceptions=True)
             for item in results:
                 if isinstance(item, BaseException):
@@ -1050,8 +1279,12 @@ class BotManager:
                                 r.ltrim("failed_queue", 0, 99)
                         except Exception:
                             pass
-                elif item[0]:
+                elif item[0] == "sent":
                     sent.append(item[1])
+                elif item[0] == "skipped":
+                    already_delivered.append(item[1])
+                elif item[0] == "cancelled":
+                    failed.append(f"{item[1]}: cancelled")
                 else:
                     failed.append(f"{item[1]}: {item[2]}")
 
@@ -1064,10 +1297,16 @@ class BotManager:
                 identity_label = f"，识别规则：{code_detail.get('name')}"
             # Identity-level dedup already marked atomically above
 
-            if sent:
-                self._flow_counters["forwarded"] += 1
+            if sent or already_delivered:
+                if sent:
+                    self._flow_counters["forwarded"] += 1
                 self._clear_pending_duplicates(reserved_identity_keys)
-                status = "已转发：" + ", ".join(sent) + f"；内部耗时 {elapsed:.2f}s"
+                delivered_parts = []
+                if sent:
+                    delivered_parts.append("已转发：" + ", ".join(sent))
+                if already_delivered:
+                    delivered_parts.append("已有发送记录：" + ", ".join(already_delivered))
+                status = "；".join(delivered_parts) + f"；内部耗时 {elapsed:.2f}s"
                 if telegram_delay_sec >= 2:
                     status += f"；Telegram推送延迟 {telegram_delay_sec:.1f}s"
                 if queue_wait_ms >= 1000:
@@ -1079,17 +1318,21 @@ class BotManager:
                 if elapsed >= 2:
                     status += "；慢转发"
                 add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": status, "perf": perf, "identity": code_detail.get('code','') if code_detail else '', "message_time": perf.get("message_time"), "receive_time": perf.get("receive_time"), "send_time": perf.get("send_time"), "telegram_delay_sec": round(telegram_delay_sec, 3), "internal_total_ms": perf.get("total_ms")})
-                self._record_perf_event(source_name, rule, link, "sent", perf, {"sent_count": len(sent), "failed_count": len(failed)})
-                push_event("success", f"命中并转发：{link}，内部耗时 {elapsed:.2f}s，Telegram延迟 {telegram_delay_sec:.1f}s")
+                self._record_perf_event(source_name, rule, link, "sent" if sent else "already_delivered", perf, {"sent_count": len(sent), "already_delivered_count": len(already_delivered), "failed_count": len(failed)})
+                if sent:
+                    push_event("success", f"命中并转发：{link}，内部耗时 {elapsed:.2f}s，Telegram延迟 {telegram_delay_sec:.1f}s")
+                else:
+                    push_event("info", f"跳过重复发送：目标已有成功记录 {link}")
                 if elapsed >= 2:
                     add_fail({"stage": "slow_forward", "error": f"内部慢转发 {elapsed:.2f}s，队列开始={qsize_at_start}，queue_wait={queue_wait_ms}ms，match={perf.get('match_ms',0)}ms，pre_dedup={perf.get('pre_dedup_ms',0)}ms，send_start={perf.get('before_send_ms',0)}ms{identity_label}", "link": link, "perf": perf})
                     push_event("warning", f"内部慢转发 {elapsed:.2f}s：{source_name}{identity_label}")
             if failed and not sent:
-                self._release_pending_dedup(reserved_identity_keys, dedup_profile)
-                self._requeue_pending_duplicates(reserved_identity_keys)
-                add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
-                self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
-                push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
+                if not already_delivered:
+                    self._release_pending_dedup(reserved_identity_keys, dedup_profile)
+                    self._requeue_pending_duplicates(reserved_identity_keys)
+                    add_hit({"source": source_name, "rule": rule[:120], "link": link, "status": "命中但发送失败"})
+                    self._record_perf_event(source_name, rule, link, "send_failed", perf, {"failed": failed[:3]})
+                    push_event("error", "命中但发送失败：" + " | ".join(failed[:2]))
         except FloodWaitError as e:
             self._release_pending_dedup(reserved_identity_keys, dedup_profile)
             self._requeue_pending_duplicates(reserved_identity_keys)
@@ -1162,7 +1405,14 @@ class BotManager:
 
         raise last_error or RuntimeError("发送失败")
 
-    async def _send_with_retry(self, client: TelegramClient, target: str, text: str, max_retries: int = 3):
+    async def _send_with_retry(
+        self,
+        client: TelegramClient,
+        target: str,
+        text: str,
+        max_retries: int = 3,
+        delivery_key: str = "",
+    ):
         last_error = None
         refreshed = False
         cache_key = normalize_chat_value(target)
@@ -1185,7 +1435,15 @@ class BotManager:
                     await asyncio.sleep(min(sec, 120))
                 # Queue for later recovery instead of losing the message
                 try:
-                    r.lpush("failed_queue", _json.dumps({"text": text, "target": target, "ts": int(time.time()), "reason": f"FloodWait {sec}s"}, ensure_ascii=False))
+                    failed_item = {
+                        "text": text,
+                        "target": target,
+                        "ts": int(time.time()),
+                        "reason": f"FloodWait {sec}s",
+                    }
+                    if delivery_key:
+                        failed_item["delivery_key"] = delivery_key
+                    r.lpush("failed_queue", _json.dumps(failed_item, ensure_ascii=False))
                     r.ltrim("failed_queue", 0, 99)
                 except Exception as qe:
                     add_fail({"stage": "failed_queue", "error": f"FloodWait 消息入队失败：{qe}"})
@@ -1202,7 +1460,14 @@ class BotManager:
                         pass
         # All retries exhausted - write to failed queue for background recovery
         try:
-            r.lpush("failed_queue", _json.dumps({"text": text, "target": target, "ts": int(time.time())}, ensure_ascii=False))
+            failed_item = {
+                "text": text,
+                "target": target,
+                "ts": int(time.time()),
+            }
+            if delivery_key:
+                failed_item["delivery_key"] = delivery_key
+            r.lpush("failed_queue", _json.dumps(failed_item, ensure_ascii=False))
             r.ltrim("failed_queue", 0, 99)
         except Exception as qe:
             add_fail({"stage": "failed_queue", "error": f"重试消息入队失败：{qe}"})
@@ -1219,9 +1484,50 @@ class BotManager:
                 raw = r.rpop("failed_queue")
                 if raw:
                     item = _json.loads(raw)
+                    target = str(item.get("target", ""))
+                    text = str(item.get("text", ""))
+                    delivery_key = str(item.get("delivery_key") or "")
+                    if delivery_key and not should_send_target(
+                        r,
+                        delivery_key,
+                        target,
+                    ):
+                        state = read_target_state(r, delivery_key, target)
+                        if str(state.get("status") or "") != "sent":
+                            r.rpush("failed_queue", raw)
+                        await asyncio.sleep(30)
+                        continue
                     self._active_jobs += 1
                     try:
-                        await self._send_with_retry(client, str(item.get("target","")), str(item.get("text","")), 2)
+                        if delivery_key:
+                            mark_target_state(
+                                r,
+                                delivery_key,
+                                target,
+                                "pending",
+                            )
+                        await self._send_with_retry(
+                            client,
+                            target,
+                            text,
+                            2,
+                            delivery_key=delivery_key,
+                        )
+                        if delivery_key:
+                            mark_target_state(
+                                r,
+                                delivery_key,
+                                target,
+                                "sent",
+                            )
+                    except Exception:
+                        if delivery_key:
+                            mark_target_state(
+                                r,
+                                delivery_key,
+                                target,
+                                "failed",
+                            )
                     finally:
                         self._active_jobs = max(0, self._active_jobs - 1)
             except asyncio.CancelledError:
@@ -1232,6 +1538,7 @@ class BotManager:
 
     def _trim_caches(self):
         now = time.time()  # wall clock for cross-thread consistency
+        self._prune_pending_duplicates(now)
         # _set_cache stores (ts, set) tuples
         for k in list(self._set_cache):
             v = self._set_cache.get(k)

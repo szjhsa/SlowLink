@@ -29,6 +29,7 @@ def _require_plugin_module(name: str):
 _invite_path_codes = _require_plugin_module("invite_path_codes")
 _register_code_patterns = _require_plugin_module("register_code_patterns")
 _telegram_start_links = _require_plugin_module("telegram_start_links")
+_code_guard = _require_plugin_module("code_guard")
 
 extract_first_invite_path_code = _invite_path_codes.extract_first_invite_path_code
 extract_invite_path_codes = _invite_path_codes.extract_invite_path_codes
@@ -274,6 +275,15 @@ MARKDOWN_REGISTER_RENEW_RE = re.compile(
     + REGISTER_SUFFIX_BOUNDARY,
     re.I | re.M,
 )
+MASKED_REGISTER_RENEW_SCAN_RE = _regex.compile(
+    r"(?<![A-Za-z0-9_-])("
+    r"[^\s*`-]+(?:-[^\s*`-]+)*-\d+(?:-[^\s*`-]+)*-(?:Register|Renew)_"
+    r"[^\s`]+?"
+    r"(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~](?![A-Za-z0-9_-]))"
+    r")",
+    _regex.I | _regex.M,
+)
+MASKED_REGISTER_IDENTITY_PREFIX = "wildcard:"
 
 
 def _normalize_rule(rule: dict[str, Any]) -> dict[str, Any]:
@@ -432,9 +442,27 @@ def _clean_code_value(value: str) -> str:
     return value.strip()
 
 
+def _masked_register_parts(value: str) -> tuple[str, str]:
+    raw = str(value or "").strip()
+    head, sep, suffix = raw.rpartition("_")
+    if not sep:
+        return _clean_code_value(raw), ""
+    suffix = suffix.strip("`'\"<>[](){}，。,.!?;:")
+    suffix = suffix.strip("*")
+    code = _clean_code_value(head + sep + re.sub(r"\*+", "", suffix))
+    pattern = head + sep + suffix if "*" in suffix else ""
+    return code, pattern
+
+
 def _extract_markdown_register_renew_code(text: str) -> str:
     """Extract strong codes and remove literal asterisks used to obscure suffixes."""
     raw = text or ""
+    for candidate in [raw, *raw.splitlines()]:
+        for match in MASKED_REGISTER_RENEW_SCAN_RE.finditer(candidate):
+            value = match.group(1) or ""
+            code, _pattern = _masked_register_parts(value)
+            if code and REGISTER_RENEW_RE.search(code):
+                return code
     for candidate in [raw, *raw.splitlines()]:
         match = MARKDOWN_REGISTER_RENEW_RE.search(candidate)
         if not match:
@@ -485,6 +513,9 @@ def _is_safe_code_context(text: str, code: str, rule: dict[str, Any]) -> tuple[b
     raw = _normalize_text(text)
     code = code or ""
     rule_name = str(rule.get("name") or "")
+    fake_reason = _code_guard.fake_code_reason(code, raw)
+    if fake_reason:
+        return False, fake_reason
     if (
         any(k in rule_name for k in ("邀请码", "注册码", "注册代码"))
         and re.fullmatch(
@@ -595,6 +626,7 @@ def normalize_code_identity(identity: str) -> str:
         "field_code",
         "code",
         "invite_code",
+        "wildcard",
     }:
         return prefix + ":" + value.lower()
     return identity or ""
@@ -637,7 +669,11 @@ def extract_code_detail(
                 "safe_reason": safe_reason,
             }
     invite_path_code = extract_first_invite_path_code(raw) if strong_codes else ""
-    if invite_path_code and not trigger_only:
+    if (
+        invite_path_code
+        and not trigger_only
+        and not _code_guard.fake_code_reason(invite_path_code, raw)
+    ):
         return {
             "index": -1,
             "name": "网页 /invite/ 六位或八位注册码",
@@ -787,6 +823,9 @@ def extract_code_identities(
     seen: set[str] = set()
 
     def push(identity: str) -> None:
+        identity_value = str(identity or "").partition(":")[2] or str(identity or "")
+        if _code_guard.fake_code_reason(identity_value, raw):
+            return
         if identity and identity not in seen:
             seen.add(identity)
             identities.append(identity)
@@ -805,6 +844,7 @@ def extract_code_identities(
             "strict_context": False,
         }
         for pattern in (WHITELIST_RE, GUESS_WHITELIST_RE):
+            found_in_candidate = False
             for candidate in candidates:
                 for match in pattern.finditer(candidate):
                     code = _clean_code_value(match.group(0))
@@ -812,7 +852,10 @@ def extract_code_identities(
                         continue
                     safe, _safe_reason = _is_safe_code_context(raw, code, whitelist_rule)
                     if safe:
+                        found_in_candidate = True
                         push(_canonical_code_identity(code, whitelist_rule, raw))
+                if found_in_candidate:
+                    break
 
         register_rule = {
             "name": "Register/Renew 完整码",
@@ -823,10 +866,20 @@ def extract_code_identities(
         }
         for line in raw.splitlines():
             for match in MARKDOWN_REGISTER_RENEW_RE.finditer(line):
+                if re.match(r"\*+(?=[A-Za-z0-9])", line[match.end():]):
+                    continue
                 suffix = re.sub(r"\*+", "", match.group(2) or "")
                 code = _clean_code_value((match.group(1) or "") + suffix)
                 if code and REGISTER_RENEW_RE.search(code):
                     push(_canonical_code_identity(code, register_rule, raw))
+            for match in MASKED_REGISTER_RENEW_SCAN_RE.finditer(line):
+                value = match.group(1) or ""
+                code, pattern = _masked_register_parts(value)
+                if code and REGISTER_RENEW_RE.search(code):
+                    if pattern:
+                        push(MASKED_REGISTER_IDENTITY_PREFIX + pattern)
+                    else:
+                        push(_canonical_code_identity(code, register_rule, raw))
             for match in HYPHEN_REGISTER_RENEW_RE.finditer(line):
                 code = _clean_code_value(match.group(0))
                 if code:
@@ -841,6 +894,8 @@ def extract_code_identities(
             found = False
             for m in matches:
                 found = True
+                if re.match(r"\*+(?=[A-Za-z0-9])", candidate[m.end():]):
+                    continue
                 code = _clean_code_value(_pick_group(m, str(rule.get("group") or "0")))
                 if not code:
                     continue

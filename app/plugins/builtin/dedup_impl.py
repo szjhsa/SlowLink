@@ -146,6 +146,15 @@ LOTTERY_KWS = ["抽奖", "抽奖开始", "抽奖开始啦", "抽奖活动已开�
 JOINT_LOTTERY_KWS = ["联合抽奖", "发起了通用抽奖活动", "通用抽奖", "多个群", "多个频道", "共同抽奖"]
 LONG_TERM_KWS = ["长期活动", "持续多日", "长期抽奖", "延期", "延迟开奖", "开奖延期", "活动延期", "持续到", "截止", "截至"]
 INVITE_KWS = ["邀请码", "注册码", "注册代码", "邀请链接", "注册链接", "register?code", "INV-", "已为您生成", "生成了", "兑换码", "激活码"]
+REGISTRATION_TIME_LABELS = (
+    "开启时间",
+    "开放时间",
+    "开注时间",
+    "注册开启时间",
+    "开放注册时间",
+    "恢复注册时间",
+    "重新开放时间",
+)
 
 LOTTERY_ID_RE = re.compile(
     r"(?:抽奖\s*ID|lottery\s*id)\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9_-]{5,127})",
@@ -232,6 +241,31 @@ def _strong_codes_active() -> bool:
 
 def _lower(text: str) -> str:
     return (text or "").lower()
+
+
+def _extract_registration_open_time(text: str) -> str:
+    raw = unicodedata.normalize("NFKC", text or "")
+    label_pattern = "|".join(re.escape(label) for label in REGISTRATION_TIME_LABELS)
+    for line in raw.splitlines():
+        candidate = re.sub(r"^[^\w\u3400-\u9fff]+", "", line.strip())
+        match = re.match(
+            rf"(?:{label_pattern})\s*[:：]\s*(.+?)\s*$",
+            candidate,
+            flags=re.I,
+        )
+        if not match:
+            continue
+        value = re.sub(r"[`*_~]+", "", match.group(1) or "")
+        value = re.sub(r"\s+", " ", value).strip().lower()
+        if value:
+            return value
+    return ""
+
+
+def _text_hash_input(normalized: str, registration_open_time: str) -> str:
+    if not registration_open_time:
+        return normalized
+    return normalized + "\nregistration open time " + registration_open_time
 
 
 def classify_activity(text: str) -> str:
@@ -714,7 +748,10 @@ def build_profile(
             normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
         else:
             normalized = normalize_for_text_dedup(text)
-        text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        registration_open_time = _extract_registration_open_time(text)
+        text_hash = hashlib.sha256(
+            _text_hash_input(normalized, registration_open_time).encode("utf-8")
+        ).hexdigest()
         lottery_identity = ""
         lottery_global_identity = ""
         lottery_template_identity = ""
@@ -769,12 +806,16 @@ def build_profile(
             "rule_policy": dict(policy),
             "ttl_minutes": policy_ttl,
             "identity_fallback": identity_fallback,
+            "registration_open_time": registration_open_time,
         }
 
     activity = classify_activity(text)
     ttl_policy = ttl_policy_for_text(text)
     normalized = normalize_for_text_dedup(text)
-    text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    registration_open_time = _extract_registration_open_time(text)
+    text_hash = hashlib.sha256(
+        _text_hash_input(normalized, registration_open_time).encode("utf-8")
+    ).hexdigest()
     lottery_identity = extract_lottery_identity(text) if activity in {"lottery", "joint_lottery"} else ""
     lottery_global_identity = (
         extract_lottery_global_identity(text)
@@ -806,6 +847,7 @@ def build_profile(
         "lottery_template_identity": lottery_template_identity,
         "lottery_mode": "id" if lottery_identity else "",
         "dedup_strategy": dedup_strategy,
+        "registration_open_time": registration_open_time,
     }
 
 

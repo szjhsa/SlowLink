@@ -22,7 +22,7 @@ FULL_PATHS = (
     "docs",
     "scripts",
 )
-FORBIDDEN_PARTS = {
+FORBIDDEN_ROOT_PARTS = {
     ".git",
     ".pytest_cache",
     "__pycache__",
@@ -32,6 +32,11 @@ FORBIDDEN_PARTS = {
     "dist",
     "plugins",
     "sessions",
+}
+FORBIDDEN_ANY_PARTS = {
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
     "superpowers",
 }
 FORBIDDEN_SUFFIXES = {
@@ -83,7 +88,10 @@ def extract_changelog(version: str, changelog: Path = ROOT / "docs" / "CHANGELOG
 
 def _is_forbidden(relative: Path) -> bool:
     lowered_parts = {part.lower() for part in relative.parts}
-    if lowered_parts & FORBIDDEN_PARTS:
+    root_part = relative.parts[0].lower() if relative.parts else ""
+    if root_part in FORBIDDEN_ROOT_PARTS:
+        return True
+    if lowered_parts & FORBIDDEN_ANY_PARTS:
         return True
     if relative.name.lower().startswith(".env") and relative.name != ".env.example":
         return True

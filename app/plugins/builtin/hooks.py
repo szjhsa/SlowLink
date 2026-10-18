@@ -16,17 +16,17 @@ BUSINESS_MATCH_RULES = [
     {"name": "Register/Renew 连字符码", "rule_type": "code", "requires_code": True, "pattern": r"(?<![A-Za-z0-9-])[A-Za-z0-9\u3400-\u9fff]{1,24}-(?:Register|Renew)-[A-Za-z0-9\u3400-\u9fff]{1,24}(?:-[A-Za-z0-9\u3400-\u9fff]{1,24}){1,4}(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
     {"name": "CK 完整码", "rule_type": "code", "requires_code": True, "pattern": r"(?<![A-Za-z0-9])CK[^\s]{12}(?=$|\s|[，。！？？；：、】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"},
     {"name": "网页 invite 码", "rule_type": "code", "requires_code": True, "pattern": r"(?i)https?://[^\s/]+/invite/(?:[a-z0-9]{6}|[a-z0-9]{8})(?![a-z0-9])"},
-    {"name": "Register/Renew 完整码", "rule_type": "code", "requires_code": True, "pattern": r"^(?!.*码使用)(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[^\s*`]+$"},
-    {"name": "注册公告", "rule_type": "keyword", "guard_topic": "registration", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
+    {"name": "Register/Renew 完整码", "rule_type": "code", "requires_code": True, "pattern": r"^(?!.*码使用)(?:[ \t]*\d{1,4}[.、)]\s*)?(?:[^\s-]+-)+\d+(?:-[^\s-]+)*-(?:Register|Renew)_[^\s`]+$"},
+    {"name": "注册公告", "rule_type": "keyword", "guard_topic": "registration", "format_gate": "registration_structured", "pattern": r"(?m)^(?:[🫧🎫🎟️🎭🤖⏳][^\n]*(?:自由|定时)注册|[🎉✨📱⏰][^\n]*开放注册)[^\n]*$"},
     {"name": "开注状态", "rule_type": "keyword", "guard_topic": "registration", "pattern": r"(?m)^[^\n]*(?:当前)?开注状态\s*(?:[|｜:：]\s*)(?:True|ON|开启|开放|1|已开启)(?=$|\s|[，。！？？；：、）】]|[,.;:)\]}>`~*])"},
     {"name": "开放注册中", "rule_type": "keyword", "guard_topic": "registration", "pattern": r"(?m)^[ \t]*📝\s*开放注册中[ \t]*$"},
-    {"name": "全局抽奖", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
+    {"name": "全局抽奖", "rule_type": "lottery", "guard_topic": "lottery", "format_gate": "lottery_structured", "pattern": r"(?m)^[^\n]*(?:抽奖活动已开始|新的抽奖已经创建|抽奖信息|🎁\s*奖品内容|奖品内容\s*[:：])[^\n]*$"},
     {"name": "刮刮乐活动", "rule_type": "lottery", "guard_topic": "lottery", "requires_lottery_context": True, "pattern": r"(?m)^[^\n]*刮刮乐[^\n]*$"},
     {"name": "抽奖活动已开始", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"(?m)^抽奖活动已开始！?$"},
     {"name": "抽奖开始啦", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🎁 抽奖开始啦"},
-    {"name": "奖品内容行", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"},
-    {"name": "通用抽奖活动", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"发起了通用抽奖活动"},
-    {"name": "祝参与者好运", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🍀 祝所有参与者好运！"},
+    {"name": "奖品内容行", "rule_type": "lottery", "guard_topic": "lottery", "format_gate": "lottery_structured", "pattern": r"(?m)^\n?🎁\s*\**\s*奖品内容\s*(?:[:：]\s*)?"},
+    {"name": "通用抽奖活动", "rule_type": "lottery", "guard_topic": "lottery", "format_gate": "lottery_structured", "pattern": r"发起了通用抽奖活动"},
+    {"name": "祝参与者好运", "rule_type": "lottery", "guard_topic": "lottery", "format_gate": "lottery_structured", "pattern": r"🍀 祝所有参与者好运！"},
     {"name": "新抽奖创建", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"新的抽奖已经创建[ \t\r\n\u200b\u200c\u200d\ufeff]*抽奖信息"},
     {"name": "抽奖活动标记", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🎉 抽奖活动已开始!"},
     {"name": "生成码提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"已为您生成了"},
@@ -37,6 +37,7 @@ BUSINESS_MATCH_RULES = [
 ]
 
 _BUSINESS_MATCH_CACHE = {"signature": None, "compiled": []}
+_FORMAT_GATE_CACHE = {"signature": None, "profiles": {}}
 
 LOTTERY_EVENT_CONTEXT_RE = _regex.compile(
     r"(?m)^[ \t]*(?:"
@@ -58,6 +59,26 @@ BUSINESS_INSTRUCTION_RE = _regex.compile(
     r"机器人会[^\n]{0,20}(?:发送|回复|推送|显示)|界面说明|如果看到|"
     r"看到[^\n]{0,40}(?:就|代表|表示|意味着)|"
     r"表示(?:已)?(?:开放|关闭|开启|结束|开始|成功)|意思是|意味着)"
+)
+
+LOTTERY_RESULT_RE = _regex.compile(
+    r"(?m)^[^\n]*(?:"
+    r"到时间啦[^\n]{0,40}开奖|开奖啦\s*$|"
+    r"开奖结果(?:如下)?\s*[:：]?\s*$|已开奖\s*[:：]?\s*$|"
+    r"开奖公告\s*[:：]?\s*$|中奖信息\s*[:：]?\s*$|"
+    r"中奖名单(?:如下)?\s*[:：]?\s*$|中奖群友\s*[:：]?\s*$|"
+    r"幸运名单公布|获奖名单\s*[:：]?\s*$|恭喜以下中奖|恭喜中奖"
+    r")[^\n]*$"
+)
+
+CK_CANDIDATE_RE = _regex.compile(
+    r"(?<![A-Za-z0-9])CK([^\s]{12})"
+    r"(?=$|\s|[，。！？？；：、】]|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))",
+    _regex.I,
+)
+CK_DOMAIN_RE = _regex.compile(r"(?i)^\.[a-z0-9-]+\.[a-z]{2,}$")
+CK_INVALID_SUFFIX_RE = _regex.compile(
+    r"(?:已封禁|封禁|已使用|已过期|失效|已兑换|已领取|已注册)"
 )
 
 REGISTRATION_EVENT_CONTEXT_RE = _regex.compile(
@@ -397,10 +418,6 @@ def _closed_register_notice(payload: dict, normalized: str, compact: str) -> boo
     )
     closed_re = _compile_pattern(config.get("closed_register_pattern"), re.I)
     exhausted_re = _compile_pattern(config.get("exhausted_register_pattern"), re.I)
-    open_states = {
-        str(value).strip().lower()
-        for value in (config.get("open_registration_states") or [])
-    }
     closed_states = {
         str(value).strip().lower()
         for value in (config.get("closed_registration_states") or [])
@@ -410,8 +427,6 @@ def _closed_register_notice(payload: dict, normalized: str, compact: str) -> boo
         value = str(status_match.group("state") or "").strip().lower()
         if value in closed_states:
             return True
-        if value in open_states:
-            return False
 
     if not any(
         marker in normalized or marker in compact
@@ -433,6 +448,98 @@ def _registration_success_notice(payload: dict, normalized: str, compact: str) -
     if not (success_re.search(normalized) or success_re.search(compact)):
         return False
     return any(marker in normalized or marker in compact for marker in markers)
+
+
+def _format_gate_profiles(config=None) -> dict:
+    config = config if isinstance(config, dict) else {}
+    if not isinstance(config, dict):
+        return {}
+    signature = repr(config)
+    if signature == _FORMAT_GATE_CACHE["signature"]:
+        return _FORMAT_GATE_CACHE["profiles"]
+    profiles = {}
+    for name, raw_profile in config.items():
+        if not isinstance(raw_profile, dict):
+            continue
+        def values(field):
+            raw_values = raw_profile.get(field)
+            if not isinstance(raw_values, list):
+                return []
+            return [str(value) for value in raw_values if str(value)]
+        try:
+            min_hits = max(0, int(raw_profile.get("regex_min_hits") or 0))
+        except (TypeError, ValueError):
+            min_hits = 0
+        profile = {
+            "applies_to_rule_types": [
+                value.strip().lower()
+                for value in values("applies_to_rule_types")
+                if value.strip()
+            ],
+            "all": values("all"),
+            "any": values("any"),
+            "exclude": values("exclude"),
+            "regex_any": [
+                _compile_pattern(value, re.I | re.M)
+                for value in values("regex_any")
+                if value.strip()
+            ],
+            "regex_min_hits": min_hits,
+            "regex_min_hits_patterns": [
+                _compile_pattern(value, re.I | re.M)
+                for value in values("regex_min_hits_patterns")
+                if value.strip()
+            ],
+        }
+        profiles[str(name)] = profile
+    _FORMAT_GATE_CACHE.update({"signature": signature, "profiles": profiles})
+    return profiles
+
+
+def _business_format_gate(
+    gate_name: str,
+    candidates,
+    format_gates=None,
+    rule_type: str = "",
+) -> tuple[bool, str]:
+    name = str(gate_name or "").strip()
+    if not name:
+        return True, ""
+    profile = _format_gate_profiles(format_gates).get(name)
+    if not profile:
+        return True, ""
+    applies_to = profile["applies_to_rule_types"]
+    if applies_to and str(rule_type or "").strip().lower() not in applies_to:
+        return True, ""
+    texts = [str(value or "") for value in candidates]
+    folded = [value.casefold() for value in texts]
+
+    def has_term(term: str) -> bool:
+        needle = term.casefold()
+        return bool(needle and any(needle in value for value in folded))
+
+    if any(has_term(term) for term in profile["exclude"]):
+        return False, f"format_excluded:{name}"
+    if profile["all"] and not all(has_term(term) for term in profile["all"]):
+        return False, f"format_missing_all:{name}"
+    if profile["any"] and not any(has_term(term) for term in profile["any"]):
+        return False, f"format_missing_any:{name}"
+    if profile["regex_any"] and not any(
+        pattern.search(value)
+        for pattern in profile["regex_any"]
+        for value in texts
+    ):
+        return False, f"format_missing_regex:{name}"
+    hit_patterns = profile["regex_min_hits_patterns"]
+    if profile["regex_min_hits"] > 0:
+        hits = sum(
+            1
+            for pattern in hit_patterns
+            if any(pattern.search(value) for value in texts)
+        )
+        if hits < profile["regex_min_hits"]:
+            return False, f"format_min_hits:{name}"
+    return True, ""
 
 
 def analyze_match_guards(payload):
@@ -482,6 +589,7 @@ def _compiled_business_match_rules():
             bool(rule.get("requires_lottery_context")),
             str(rule.get("guard_topic") or ""),
             bool(rule.get("reject_in_instruction")),
+            str(rule.get("format_gate") or ""),
         )
         for rule in BUSINESS_MATCH_RULES
     )
@@ -508,6 +616,21 @@ def match_plugin_event(payload):
     original = str(payload.get("text") or "")
     normalized = str(payload.get("normalized") or original)
     compact = str(payload.get("compact") or re.sub(r"\s+", "", normalized))
+    rule_policy = payload.get("rule_policy")
+    rule_type = (
+        str(rule_policy.get("rule_type") or "").strip().lower()
+        if isinstance(rule_policy, dict)
+        else ""
+    )
+    if any(
+        LOTTERY_RESULT_RE.search(candidate)
+        for candidate in (original, normalized, compact)
+    ):
+        return {
+            "matched": False,
+            "suppressed": True,
+            "reason": "lottery_result",
+        }
 
     def _code_detail():
         try:
@@ -520,6 +643,52 @@ def match_plugin_event(payload):
             return {}
 
     detail = _code_detail()
+    ck_candidates = []
+    for candidate in (original, normalized, compact):
+        for match in CK_CANDIDATE_RE.finditer(candidate):
+            prefix = candidate[max(0, match.start() - 8):match.start()]
+            ck_candidates.append((
+                match.group(1),
+                "://" in prefix,
+            ))
+    if ck_candidates and all(
+        (
+            sum(ch.isascii() and ch.isalnum() for ch in suffix) < 4
+            or bool(CK_DOMAIN_RE.fullmatch(suffix))
+            or bool(CK_INVALID_SUFFIX_RE.search(suffix))
+            or in_url
+        )
+        for suffix, in_url in ck_candidates
+    ):
+        return {
+            "matched": False,
+            "suppressed": True,
+            "reason": "weak_ck_code",
+        }
+
+    is_instruction_text = any(
+        BUSINESS_INSTRUCTION_RE.search(candidate)
+        for candidate in (original, normalized, compact)
+    )
+    if is_instruction_text and not (
+        str(detail.get("code") or "")
+        or any(
+            LOTTERY_EVENT_CONTEXT_RE.search(candidate)
+            for candidate in (original, normalized, compact)
+        )
+        or any(
+            REGISTRATION_EVENT_CONTEXT_RE.search(candidate)
+            for candidate in (original, normalized, compact)
+        )
+    ):
+        return {
+            "matched": False,
+            "suppressed": True,
+            "reason": "instruction_text",
+        }
+
+    suppressed = False
+    suppressed_reason = "instruction_text"
     for rule, compiled in _compiled_business_match_rules():
         for candidate in (original, normalized, compact):
             try:
@@ -533,18 +702,32 @@ def match_plugin_event(payload):
                     continue
                 is_instruction = bool(BUSINESS_INSTRUCTION_RE.search(candidate))
                 if rule.get("reject_in_instruction") and is_instruction:
+                    suppressed = True
                     continue
                 if (
                     rule.get("requires_lottery_context")
                     and not LOTTERY_EVENT_CONTEXT_RE.search(candidate)
                 ):
+                    suppressed = True
                     continue
                 if is_instruction:
                     topic = str(rule.get("guard_topic") or "")
                     if topic == "lottery" and not LOTTERY_EVENT_CONTEXT_RE.search(candidate):
+                        suppressed = True
                         continue
                     if topic == "registration" and not REGISTRATION_EVENT_CONTEXT_RE.search(candidate):
+                        suppressed = True
                         continue
+                format_ok, format_reason = _business_format_gate(
+                    str(rule.get("format_gate") or ""),
+                    (original, normalized, compact),
+                    payload.get("format_gates"),
+                    rule_type,
+                )
+                if not format_ok:
+                    suppressed = True
+                    suppressed_reason = format_reason
+                    continue
                 return {
                     "matched": True,
                     "rule": "plugin:" + str(rule.get("name") or "event"),
@@ -553,6 +736,13 @@ def match_plugin_event(payload):
                     "pattern": str(rule.get("pattern") or ""),
                     "code_detail": detail,
                 }
+
+    if suppressed:
+        return {
+            "matched": False,
+            "suppressed": True,
+            "reason": suppressed_reason,
+        }
 
     identity = str(detail.get("identity") or "") if isinstance(detail, dict) else ""
     if (
