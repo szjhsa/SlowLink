@@ -31,6 +31,27 @@ class DeadCodeCleanupV13914Tests(unittest.TestCase):
         self.assertNotIn("URL_RE", dedup)
         self.assertNotIn("APP_NAME", config)
         self.assertNotIn('"keywords"', matcher)
+        self.assertNotIn("def compact_text", matcher)
+
+    def test_unwired_plugin_crud_and_dedup_engine_are_removed(self):
+        builtin = APP / "plugins" / "builtin"
+        code_rules = read(builtin / "code_rules_impl.py")
+        dedup = read(builtin / "dedup_impl.py")
+
+        for name in (
+            "reset_code_rules",
+            "add_code_rule",
+            "delete_code_rule",
+            "update_code_rule",
+            "code_rule_diagnostics",
+        ):
+            self.assertNotIn(f"def {name}", code_rules)
+        for name in (
+            "check_and_mark",
+            "list_dedup_recent",
+            "release_dedup",
+        ):
+            self.assertNotIn(f"def {name}", dedup)
 
     def test_unused_imports_are_removed(self):
         redis_store = read(APP / "redis_store.py")

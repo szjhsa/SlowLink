@@ -108,11 +108,6 @@ def normalize_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def compact_text(text: str) -> str:
-    text = normalize_text(text)
-    return re.sub(r"\s+", "", text)
-
-
 def _excluded_text_keyword(normalized: str, ttl: float = 60.0) -> str:
     now = time.monotonic()
     cached_raw = _EXCLUDE_TEXT_CACHE.get("raw")

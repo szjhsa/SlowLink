@@ -1,5 +1,4 @@
 ﻿import hashlib
-import json
 import re
 import time
 import unicodedata
@@ -21,18 +20,6 @@ class _RedisProxy:
 r = _RedisProxy()
 
 
-def sha(text):
-    from redis_store import sha as _sha
-
-    return _sha(text)
-
-
-def format_time(*args, **kwargs):
-    from redis_store import format_time as _format_time
-
-    return _format_time(*args, **kwargs)
-
-
 def _require_plugin_module(name: str):
     module = load_plugin_module(name)
     if module is None:
@@ -50,24 +37,6 @@ extract_telegram_start_register_renew_codes = (
     _telegram_start_links.extract_telegram_start_register_renew_codes
 )
 
-try:
-    from redis_store import add_correlation_collision as _add_collision
-    from redis_store import is_collision_exempt as _is_collision_exempt
-except (ImportError, AttributeError):
-    def _add_collision(item: dict) -> None:
-        try:
-            import json as _json
-            r.lpush("dedup:collisions", _json.dumps(item, ensure_ascii=False))
-            r.ltrim("dedup:collisions", 0, 199)
-        except Exception:
-            pass
-
-    def _is_collision_exempt(identity: str, dedup_id: str) -> bool:
-        try:
-            return bool(r.sismember("dedup:collision_exempt:" + sha(identity), str(dedup_id)))
-        except Exception:
-            return False
-
 # ---- Text normalization for dedup ----
 
 EMOJI_RE = re.compile(
@@ -79,64 +48,11 @@ EMOJI_RE = re.compile(
     flags=re.UNICODE,
 )
 
-RECENT_LIST = "dedup:recent"
-META_PREFIX = "dedup:meta:"
-
 # Module-level TTL cache to avoid per-message Redis GET
 _TTL_CACHE: dict[str, tuple[float, int]] = {}
 _TTL_CACHE_TTL = 30.0
 _LOTTERY_TEMPLATE_MODE_CACHE: dict[str, object] = {"ts": 0.0, "value": "global"}
 LOTTERY_TEMPLATE_MODE_KEY = "dedup_lottery_template_mode"
-
-
-def clear_ttl_cache():
-    _TTL_CACHE.clear()
-    _LOTTERY_TEMPLATE_MODE_CACHE.update({"ts": 0.0, "value": "global"})
-
-
-def _now() -> int:
-    return int(time.time())
-
-
-def _ts() -> str:
-    return format_time()
-
-
-def _meta_key(dedup_id: str) -> str:
-    return META_PREFIX + sha(dedup_id)
-
-
-def _load_meta(dedup_id: str) -> dict[str, Any]:
-    raw = r.get(_meta_key(dedup_id))
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except Exception:
-        return {}
-
-
-def _save_meta(meta: dict[str, Any], ttl_seconds: int) -> None:
-    r.setex(_meta_key(meta["dedup_id"]), ttl_seconds, json.dumps(meta, ensure_ascii=False))
-
-
-def _release_new_keys(keys: list[str]) -> None:
-    keys = [k for k in keys or [] if k]
-    if not keys:
-        return
-    try:
-        r.delete(*keys)
-    except Exception:
-        pass
-
-
-def _push_recent(item: dict[str, Any], limit: int = 120) -> None:
-    item = dict(item)
-    item.setdefault("time", _ts())
-    pipe = r.pipeline()
-    pipe.lpush(RECENT_LIST, json.dumps(item, ensure_ascii=False))
-    pipe.ltrim(RECENT_LIST, 0, limit - 1)
-    pipe.execute()
 
 
 # ---- Activity classification ----
@@ -178,7 +94,6 @@ LOTTERY_SEED_RE = re.compile(
     r"(?:随机种子(?:哈希)?|random\s+seed(?:\s+hash)?)\s*[:：]\s*([a-f0-9]{16,128})",
     re.I,
 )
-LOTTERY_TEMPLATE_WINDOW_SECONDS = 10 * 60
 DYNAMIC_LINE_RES: tuple[re.Pattern, ...] = ()
 TTL_DEFAULTS = {
     "register": 20,
@@ -907,256 +822,6 @@ def build_profile(
         "registration_open_time": registration_open_time,
         "registration_snapshot": registration_snapshot,
     }
-
-
-# ---- Unified two-layer dedup ----
-
-def check_and_mark(
-    text: str,
-    message_link: str,
-    ttl_minutes: int | None = 20,
-    mode: str = "strict",
-    source: str = "",
-    policy: dict[str, Any] | None = None,
-    code_identities: list[str] | None = None,
-) -> tuple[bool, str, dict]:
-    """Unified dedup with two layers, both checked in a single Redis pipeline.
-
-    Layer 1: Same original message link -> block.
-    Layer 2: Same stable lottery identity or normalized text hash -> block.
-    """
-    profile = build_profile(
-        text,
-        message_link,
-        source,
-        policy=policy,
-        code_identities=code_identities,
-    )
-    content_key = "dedup:" + profile["dedup_id"]
-    link_key = "dedup:link:" + sha(message_link) if message_link else ""
-    template_identities: list[str] = []
-    policy_template_mode = str((policy or {}).get("lottery_template_mode") or "")
-    template_mode = (
-        policy_template_mode
-        if policy_template_mode in {"global", "id", "off"}
-        else lottery_template_dedup_mode()
-    )
-    if template_mode == "global":
-        seen_identities: set[str] = set()
-        for identity in (
-            profile.get("lottery_template_identity") or "",
-            profile.get("lottery_global_identity") or "",
-        ):
-            if identity and identity not in seen_identities:
-                seen_identities.add(identity)
-                template_identities.append(identity)
-    effective_template_identities = [
-        identity
-        for identity in template_identities
-        if not _is_collision_exempt(identity, profile["dedup_id"])
-    ]
-    template_keys = [
-        "dedup:lottery-template:" + sha(identity)
-        for identity in effective_template_identities
-    ]
-
-    real_ttl_minutes = ttl_minutes_for_profile(profile, ttl_minutes) if ttl_minutes is None else int(ttl_minutes)
-    if int(real_ttl_minutes) <= 0:
-        return False, "该类型已设置为不去重", profile
-    ttl_seconds = max(60, int(real_ttl_minutes) * 60)
-    dedup_id = profile["dedup_id"]
-
-    # Pipeline text+link SET NX in one roundtrip.
-    # SET NX stores dedup_id as value, so the stored value is always dedup_id
-    # — we never need a follow-up GET for existing_id.
-    pipe = r.pipeline()
-    pipe.set(content_key, dedup_id, ex=ttl_seconds, nx=True)
-    if message_link:
-        pipe.set(link_key, dedup_id, ex=ttl_seconds, nx=True)
-    for template_key in template_keys:
-        pipe.set(template_key, dedup_id, ex=LOTTERY_TEMPLATE_WINDOW_SECONDS, nx=True)
-    results = pipe.execute()
-
-    content_is_new = results[0]
-    result_index = 1
-    link_is_new = results[result_index] if message_link else True
-    result_index += 1 if message_link else 0
-    template_new: list[bool] = []
-    for _template_key in template_keys:
-        template_new.append(bool(results[result_index]))
-        result_index += 1
-
-    new_keys = []
-    if content_is_new:
-        new_keys.append(content_key)
-    if message_link and link_is_new:
-        new_keys.append(link_key)
-    for template_key, template_is_new in zip(template_keys, template_new):
-        if template_is_new:
-            new_keys.append(template_key)
-
-    if not content_is_new:
-        _release_new_keys(new_keys)
-        if profile.get("identity_fallback"):
-            reason = f"未识别到完整码，按相同文本内容重复（{real_ttl_minutes}分钟内）"
-        elif profile.get("dedup_strategy") == "code_identity":
-            reason = f"相同完整码重复（{real_ttl_minutes}分钟内）"
-        elif profile.get("lottery_identity"):
-            reason = f"相同抽奖 ID 重复（{real_ttl_minutes}分钟内）"
-        else:
-            reason = f"相同文本内容重复（{real_ttl_minutes}分钟内）"
-        _record_duplicate(dedup_id, profile, reason, source, message_link, ttl_seconds)
-        return True, reason, profile
-
-    if not link_is_new:
-        _release_new_keys(new_keys)
-        reason = f"同一条原消息链接重复（{real_ttl_minutes}分钟内）"
-        _record_duplicate(dedup_id, profile, reason, source, message_link, ttl_seconds)
-        return True, reason, profile
-
-    for template_index, template_key in enumerate(template_keys):
-        template_is_new = template_new[template_index]
-        if not template_is_new:
-            existing_id = r.get(template_key) or dedup_id
-            explicit_id_conflict = (
-                bool(profile.get("lottery_identity"))
-                and str(existing_id).startswith("lottery:")
-                and existing_id != dedup_id
-            )
-            if not explicit_id_conflict:
-                # Keep the exact text/link keys even when the event template
-                # already exists. Otherwise the next count/text variant can
-                # become a new "first" after the short template window expires.
-                new_template_keys = [
-                    key
-                    for key, is_new in zip(template_keys, template_new)
-                    if is_new
-                ]
-                _release_new_keys(new_template_keys)
-                reason = "同一抽奖的不同模板重复（10分钟内）"
-                _add_collision({
-                    "identity": effective_template_identities[template_index],
-                    "dedup_id": profile["dedup_id"],
-                    "first_dedup_id": existing_id,
-                    "source": source or "",
-                    "link": message_link or profile.get("message_link", ""),
-                })
-                _record_duplicate(existing_id, profile, reason, source, message_link, ttl_seconds)
-                return True, reason, profile
-
-    redis_keys = [content_key]
-    if link_key:
-        redis_keys.append(link_key)
-    for template_key, template_is_new in zip(template_keys, template_new):
-        if template_is_new:
-            redis_keys.append(template_key)
-    _register_new(profile, redis_keys, ttl_seconds, source, "首次命中")
-    return False, "未重复", profile
-
-
-def _register_new(profile: dict[str, Any], redis_keys: list[str], ttl_seconds: int, source: str, reason: str) -> None:
-    expire_at = _now() + ttl_seconds
-    meta = {
-        "dedup_id": profile["dedup_id"],
-        "activity": profile.get("activity", ""),
-        "core": profile.get("core", "")[:300],
-        "message_link": profile.get("message_link", ""),
-        "first_source": source or "",
-        "duplicate_count": 0,
-        "duplicate_sources": [],
-        "first_seen": _ts(),
-        "last_seen": _ts(),
-        "expire_at": expire_at,
-        "redis_keys": redis_keys,
-    }
-    _save_meta(meta, ttl_seconds)
-    _push_recent({
-        "action": "first",
-        "dedup_id": profile["dedup_id"],
-        "activity": profile.get("activity", ""),
-        "source": source or "",
-        "reason": reason,
-        "core": profile.get("core", "")[:180],
-        "link": profile.get("message_link", ""),
-        "expire_at": expire_at,
-    })
-
-
-def _record_duplicate(dedup_id: str, profile: dict[str, Any], reason: str, source: str, link: str, ttl_seconds: int) -> None:
-    meta = _load_meta(dedup_id)
-    if meta:
-        sources = list(meta.get("duplicate_sources") or [])
-        if source and source not in sources and source != meta.get("first_source"):
-            sources.append(source)
-        meta["duplicate_sources"] = sources[-30:]
-        meta["duplicate_count"] = int(meta.get("duplicate_count") or 0) + 1
-        meta["last_seen"] = _ts()
-        remain = max(60, int(meta.get("expire_at", _now() + ttl_seconds)) - _now())
-        _save_meta(meta, remain)
-    _push_recent({
-        "action": "duplicate",
-        "dedup_id": dedup_id,
-        "activity": profile.get("activity", ""),
-        "source": source or "",
-        "reason": reason,
-        "core": profile.get("core", "")[:180],
-        "link": link or profile.get("message_link", ""),
-    })
-
-
-# ---- WebUI helpers ----
-
-def list_dedup_recent(limit: int = 30) -> list[dict[str, Any]]:
-    out = []
-    seen = set()
-    now = _now()
-    for raw in r.lrange(RECENT_LIST, 0, max(limit * 4, limit) - 1):
-        try:
-            item = json.loads(raw)
-        except Exception:
-            continue
-        did = item.get("dedup_id") or ""
-        if not did or did in seen:
-            continue
-        seen.add(did)
-        meta = _load_meta(did)
-        item["duplicate_count"] = int(meta.get("duplicate_count") or 0) if meta else int(item.get("duplicate_count") or 0)
-        item["first_source"] = meta.get("first_source", "") if meta else ""
-        item["duplicate_sources"] = meta.get("duplicate_sources", []) if meta else []
-        expire_at = int(meta.get("expire_at") or item.get("expire_at") or 0) if (meta or item) else 0
-        item["ttl_left"] = max(0, expire_at - now) if expire_at else 0
-        item["active"] = bool(meta)
-        out.append(item)
-        if len(out) >= limit:
-            break
-    return out
-
-
-def release_dedup(dedup_id: str) -> bool:
-    dedup_id = (dedup_id or "").strip()
-    if not dedup_id:
-        return False
-    meta = _load_meta(dedup_id)
-    keys = list(meta.get("redis_keys") or []) if meta else []
-    if not meta:
-        # Meta expired or was lost; remove any dedup key still pointing at this id.
-        try:
-            for k in r.scan_iter(match="dedup:*", count=200):
-                try:
-                    if str(r.type(k) or "") == "string" and r.get(k) == dedup_id:
-                        keys.append(k)
-                except Exception:
-                    continue
-        except Exception:
-            pass
-    keys.append(_meta_key(dedup_id))
-    # dedup_id is "text:<text_hash>"; the actual Redis key is "dedup:" + dedup_id.
-    # Link keys are stored in meta.redis_keys when available; we cannot
-    # reconstruct them without the original message_link, so rely on meta.
-    keys.append("dedup:" + dedup_id)
-    deleted = r.delete(*[k for k in set(keys) if k])
-    _push_recent({"action": "release", "dedup_id": dedup_id, "reason": "手动解除去重"})
-    return bool(deleted)
 
 
 reload_builtins()

@@ -48,8 +48,6 @@ CODE_RULE_MATCH_TIMEOUT_SECONDS = 0.05
 LEGACY_MASKED_REGISTER_SUFFIX_PATTERN = r"(?:[A-Za-z0-9_-]|数字|字母)+"
 
 
-def _rules_key() -> str:
-    return CODE_RULES_KEY if active_plugin_id() else PURE_CODE_RULES_KEY
 LEGACY_REGISTER_SUFFIX_BOUNDARY = (
     r"(?=$|\s|[，。！？？；：、）】]"
     r"|[,.;:)\]}>`~*](?![A-Za-z0-9_-]))"
@@ -356,54 +354,6 @@ def save_code_rules_to_source(rules: list[dict[str, Any]], source: str) -> None:
     else:
         set_json(key, cleaned)
     _CACHE.update({"ts": 0.0, "raw": None, "compiled": []})
-
-
-def reset_code_rules() -> None:
-    if active_plugin_id():
-        save_code_rules(list(DEFAULT_CODE_RULES))
-    else:
-        save_code_rules([])
-
-
-def add_code_rule(name: str, pattern: str, group: str = "0", fast: bool = True, trigger: bool = False, strict_context: bool = True) -> None:
-    rules = get_code_rules()
-    item = _normalize_rule({
-        "name": name,
-        "pattern": pattern,
-        "group": group,
-        "enabled": True,
-        "fast": fast,
-        "trigger": trigger,
-        "strict_context": strict_context,
-    })
-    # 保存前先编译，避免坏规则进库。
-    _regex.compile(item["pattern"], _regex.I | _regex.M | _regex.S)
-    if not any(r.get("pattern") == item["pattern"] and r.get("group") == item["group"] for r in rules):
-        rules.append(item)
-    save_code_rules(rules)
-
-
-def delete_code_rule(index: int) -> bool:
-    rules = get_code_rules()
-    if 0 <= index < len(rules):
-        rules.pop(index)
-        save_code_rules(rules)
-        return True
-    return False
-
-
-def update_code_rule(index: int, patch: dict[str, Any]) -> bool:
-    rules = get_code_rules()
-    if not (0 <= index < len(rules)):
-        return False
-    current = dict(rules[index])
-    current.update(patch or {})
-    item = _normalize_rule(current)
-    # 保存前先编译，避免坏规则进库。
-    _regex.compile(item["pattern"], _regex.I | _regex.M | _regex.S)
-    rules[index] = item
-    save_code_rules(rules)
-    return True
 
 
 def _compiled_rules(ttl: float = 30.0, rules: list[dict[str, Any]] | None = None):
@@ -906,17 +856,6 @@ def extract_code_identities(
                 break
 
     return identities
-
-
-def code_rule_diagnostics() -> list[dict[str, Any]]:
-    out = []
-    for i, rule in enumerate(get_code_rules()):
-        try:
-            _regex.compile(rule.get("pattern", ""), _regex.I | _regex.M | _regex.S)
-            out.append({"index": i, "ok": True, **rule, "error": ""})
-        except _regex.error as e:
-            out.append({"index": i, "ok": False, **rule, "error": str(e)})
-    return out
 
 
 reload_builtins()
