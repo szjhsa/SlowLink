@@ -167,6 +167,26 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
                     self.assertFalse(result.get("matched"))
                     self.assertTrue(result.get("suppressed"))
 
+    def test_lottery_result_notice_with_prize_content_is_suppressed(self):
+        samples = (
+            "神秘礼物 · 开奖公示\n"
+            "抽奖编号：123\n参与用户：uspro\n"
+            "奖项等级：六等礼物\n🎁 奖品内容\n神秘礼物日卡\n",
+            "神秘礼物 · 开奖详情\n"
+            "抽奖编号：124\n中奖结果：神秘礼物周卡\n",
+            "神秘礼物 · 开奖记录\n"
+            "抽奖编号：125\n奖品内容\n神秘礼物月卡\n",
+        )
+
+        for text in samples:
+            with self.subTest(text=text):
+                result = plugin_match(text)
+
+                self.assertIsInstance(result, dict)
+                self.assertFalse(result.get("matched"))
+                self.assertTrue(result.get("suppressed"))
+                self.assertEqual(result.get("reason"), "lottery_result")
+
     def test_exact_short_lines_still_auto_trigger(self):
         for text in ("📝 开放注册中", "虎揍快来"):
             with self.subTest(text=text):
