@@ -174,7 +174,20 @@ def all_rule_policies(store=None, *, use_cache: bool = True) -> dict[str, dict[s
 def get_rule_policy(rule: str, store=None) -> dict[str, Any] | None:
     if not str(rule or ""):
         return None
-    return all_rule_policies(store=store).get(policy_key(rule))
+    policies = all_rule_policies(store=store)
+    direct = policies.get(policy_key(rule))
+    if direct:
+        return direct
+    parts = [part.strip() for part in str(rule).split(";;") if part.strip()]
+    if len(parts) < 2:
+        return None
+    part_policies = [policies.get(policy_key(part)) for part in parts]
+    if not part_policies or any(policy is None for policy in part_policies):
+        return None
+    first = part_policies[0]
+    if all(policy == first for policy in part_policies[1:]):
+        return dict(first or {})
+    return None
 
 
 def save_rule_policy(

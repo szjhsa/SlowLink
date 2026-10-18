@@ -81,6 +81,28 @@ class RulePolicyV110Tests(unittest.TestCase):
         self.assertEqual(loaded["ttl_minutes"], 60)
         self.assertEqual(loaded["dedup_strategy"], "normalized_text")
 
+    def test_combined_rule_inherits_policy_when_all_parts_match(self):
+        first = "🎁 抽奖开始啦"
+        second = r"(?m)^🎁\s*奖品内容"
+        combined = first + ";;" + second
+        saved = rule_policy.save_rule_policy(
+            first,
+            "lottery",
+            store=self.store,
+        )
+        rule_policy.save_rule_policy(
+            second,
+            "lottery",
+            store=self.store,
+            overrides=saved,
+        )
+
+        loaded = rule_policy.get_rule_policy(combined, store=self.store)
+
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["rule_type"], "lottery")
+        self.assertEqual(loaded["ttl_minutes"], saved["ttl_minutes"])
+
 
 if __name__ == "__main__":
     unittest.main()
