@@ -89,7 +89,7 @@ class SafeAuditFixesV13927Tests(unittest.TestCase):
         store = read(APP / "redis_store.py")
         dedup = read(APP / "dedup.py")
 
-        self.assertIn('self._dedup_settings = (0.0, True, "strict", 20, 20)', runner)
+        self.assertIn("self._dedup_settings = (0.0, True, 20, 20)", runner)
         self.assertIn("failed_queue", runner)
         self.assertIn("批量写入 Redis 失败", store)
         self.assertIn('str(r.type(k) or "") == "string"', store)

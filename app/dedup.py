@@ -409,7 +409,7 @@ def check_and_mark(
     text: str,
     message_link: str,
     ttl_minutes: int | None = 20,
-    mode: str = "strict",
+    mode: str = "strict",  # legacy API argument, kept for call-site compatibility
     source: str = "",
     policy: dict[str, Any] | None = None,
     identities: list[str] | None = None,

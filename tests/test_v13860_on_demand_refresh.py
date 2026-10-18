@@ -65,7 +65,7 @@ class OnDemandRefreshV13860Tests(unittest.TestCase):
         matcher = read(APP / "matcher.py")
 
         self.assertIn("invalidate_rule_cache()", web)
-        self.assertIn("self._dedup_settings = (0.0, True, \"strict\", 20, 20)", bot_runner)
+        self.assertIn("self._dedup_settings = (0.0, True, 20, 20)", bot_runner)
         self.assertIn("analyze_message(", bot_runner)
         self.assertNotIn("extract_code_detail(text)", bot_runner)
         self.assertIn("if cached_raw is not None and now - cached_ts <= ttl:", matcher)

@@ -103,7 +103,7 @@ class BotManager:
         self._last_delay_reconnect_ts = time.time()  # starts from listener init, not epoch 0
         self._reconnect_requested = False
         self._reconnect_reason = ""
-        self._dedup_settings = (0.0, True, "strict", 20, 20)  # (ts, enabled, mode, other_minutes, code_minutes)
+        self._dedup_settings = (0.0, True, 20, 20)  # (ts, enabled, other_minutes, code_minutes)
         self._pending_duplicate_events: dict[str, list] = {}
         self._last_gate_event_ts = {"message_age": 0.0, "queue_age": 0.0}
         self._monitor_peer_ids = frozenset()
@@ -142,11 +142,11 @@ class BotManager:
         self._str_cache[key] = (now, value)
         return value
 
-    def _cached_dedup_settings(self, ttl: float = 30.0) -> tuple[bool, str, int, int]:
+    def _cached_dedup_settings(self, ttl: float = 30.0) -> tuple[bool, int, int]:
         now = time.time()
-        ts, enabled, mode, other_minutes, identity_minutes = self._dedup_settings
+        ts, enabled, other_minutes, identity_minutes = self._dedup_settings
         if now - ts <= ttl:
-            return enabled, mode, other_minutes, identity_minutes
+            return enabled, other_minutes, identity_minutes
         storage_config = get_plugin_storage_config()
         identity_key = str(storage_config.get("identity_ttl_key") or "")
         try:
@@ -155,27 +155,25 @@ class BotManager:
             identity_default = 20
         pipe = r.pipeline()
         pipe.get("dedup_enabled")
-        pipe.get("dedup_mode")
         pipe.get("dedup_other_minutes")
         pipe.get(identity_key or "dedup_identity_minutes")
-        raw_enabled, raw_mode, raw_other, raw_identity = pipe.execute()
+        raw_enabled, raw_other, raw_identity = pipe.execute()
         enabled = (raw_enabled or "1") == "1"
-        mode = raw_mode if raw_mode in {"strict", "balanced", "loose"} else "strict"
         try: other_minutes = int(raw_other or 20)
         except Exception: other_minutes = 20
         try: identity_minutes = int(raw_identity or identity_default)
         except Exception: identity_minutes = identity_default
         if not _plugin_active_id():
             identity_minutes = other_minutes
-        self._dedup_settings = (now, enabled, mode, other_minutes, identity_minutes)
-        return enabled, mode, other_minutes, identity_minutes
+        self._dedup_settings = (now, enabled, other_minutes, identity_minutes)
+        return enabled, other_minutes, identity_minutes
 
     def clear_runtime_cache(self):
         self._set_cache.clear()
         self._target_entity_cache.clear()
         self._source_cache.clear()
         self._str_cache.clear()
-        self._dedup_settings = (0.0, True, "strict", 20, 20)
+        self._dedup_settings = (0.0, True, 20, 20)
         self._monitor_filter_dirty = True
 
     def _mark_business_received(self) -> None:
@@ -921,7 +919,7 @@ class BotManager:
         proactive = reason == "_proactive_"
         self._reconnect_requested = False
         self._reconnect_reason = ""
-        self._dedup_settings = (0.0, True, "strict", 20, 20)  # (ts, enabled, mode, other_minutes, code_minutes)
+        self._dedup_settings = (0.0, True, 20, 20)  # (ts, enabled, other_minutes, code_minutes)
         self._last_delay_reconnect_ts = time.time()
         if proactive:
             log_line("info", "定期刷新连接（2h）")
@@ -1185,7 +1183,7 @@ class BotManager:
                 source_name,
                 message_ts,
             )
-            dedup_enabled, mode, _dedup_other, identity_minutes = self._cached_dedup_settings()
+            dedup_enabled, _dedup_other, identity_minutes = self._cached_dedup_settings()
             storage_config = get_plugin_storage_config()
             identity_key_prefix = str(
                 storage_config.get("identity_key_prefix") or "dedup:identity:"
@@ -1289,8 +1287,7 @@ class BotManager:
                     text,
                     link,
                     None,
-                    mode,
-                    source_name,
+                    source=source_name,
                     policy=rule_policy,
                     identities=identity_values,
                 )
