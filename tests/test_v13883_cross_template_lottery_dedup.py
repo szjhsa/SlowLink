@@ -87,6 +87,36 @@ LEWA_MESSAGE_WITH_REQUIREMENT = LEWA_MESSAGE_WITHOUT_REQUIREMENT.replace(
     "📋 参与要求：\n  ▸ 订阅 乐蛙影视站-群组\n\n🔑 口令：",
 )
 
+CRAB_TEMPLATE_BASE = """🎟 螃蟹EMBY周年庆，连抽半个月！
+卡网
+shop.qtecrab.com
+运维情况与测评时相距较远，参考价值较低，还需要群友们自行体验～
+🎁 奖品内容
+Pre月卡 x2
+Basic月卡 x5
+📋 规则
+开奖方式
+定时开奖: 2026-10-20 20:38
+参与要求
+同时在 集邮者联盟、螃蟹emby影视服通知频道🦀、🦀影视服emby群(不是机场！)
+📊 进度
+已参与 47 人（47 票）· 中奖概率（每张票）14.89%
+随机种子哈希 27c3a9f8…357ea6 · 请先私聊机器人后再参与该抽奖
+"""
+
+CRAB_TEMPLATE_WITH_KEYWORD = CRAB_TEMPLATE_BASE.replace(
+    "📋 规则\n开奖方式",
+    "📋 规则\n参与次数上限\n1\n跨群总参与次数上限\n1\n开奖方式",
+).replace(
+    "参与要求\n同时在",
+    "参与关键词\n庆祝🦀一周年\n参与要求\n同时在",
+)
+
+CRAB_TEMPLATE_WITH_CONDITION = CRAB_TEMPLATE_WITH_KEYWORD.replace(
+    "参与要求\n同时在",
+    "📮 抽奖条件:\n参与要求\n同时在",
+)
+
 
 class FakePipeline:
     def __init__(self, client):
@@ -215,6 +245,34 @@ class CrossTemplateLotteryDedupV13883Tests(unittest.TestCase):
         self.assertFalse(first_duplicate)
         self.assertTrue(second_duplicate)
         self.assertIn("同一抽奖的不同模板", reason)
+
+    def test_unpunctuated_prize_heading_merges_three_lottery_templates(self):
+        dedup, _client = load_dedup()
+        variants = (
+            CRAB_TEMPLATE_BASE,
+            CRAB_TEMPLATE_WITH_KEYWORD,
+            CRAB_TEMPLATE_WITH_CONDITION,
+        )
+        identities = {
+            dedup.build_profile(text, f"https://t.me/source/{index}")["lottery_global_identity"]
+            for index, text in enumerate(variants)
+        }
+        self.assertEqual(len(identities), 1)
+        self.assertTrue(next(iter(identities)).startswith("global-lottery:"))
+
+        first, _reason, _profile = dedup.check_and_mark(
+            variants[0], "https://t.me/source/1", None, "strict", "来源A"
+        )
+        second, _reason, _profile = dedup.check_and_mark(
+            variants[1], "https://t.me/source/2", None, "strict", "来源B"
+        )
+        third, _reason, _profile = dedup.check_and_mark(
+            variants[2], "https://t.me/source/3", None, "strict", "来源C"
+        )
+
+        self.assertFalse(first)
+        self.assertTrue(second)
+        self.assertTrue(third)
 
     def test_changed_draw_time_or_prize_is_not_blocked(self):
         dedup, _client = load_dedup()

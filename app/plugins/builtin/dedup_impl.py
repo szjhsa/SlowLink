@@ -338,15 +338,31 @@ LOTTERY_SECTION_LABELS = (
 
 
 def _extract_lottery_section_values(raw: str, labels: tuple[str, ...]) -> list[str]:
-    label_pattern = "|".join(re.escape(label) for label in labels)
-    section_pattern = "|".join(re.escape(label) for label in LOTTERY_SECTION_LABELS)
+    label_pattern = "|".join(
+        re.escape(label) for label in sorted(labels, key=len, reverse=True)
+    )
+    section_labels = set(LOTTERY_SECTION_LABELS) | {
+        "规则",
+        "开奖方式",
+        "进度",
+        "参与次数上限",
+        "跨群总参与次数上限",
+        "参与关键词",
+    }
+    section_pattern = "|".join(
+        re.escape(label) for label in sorted(section_labels, key=len, reverse=True)
+    )
     lines = (raw or "").splitlines()
     for index, line in enumerate(lines):
         candidate = re.sub(r"^[^\w\u3400-\u9fff]+", "", line.strip())
-        match = re.match(rf"(?:{label_pattern})\s*[:：]\s*(.*?)\s*$", candidate, flags=re.I)
+        match = re.match(
+            rf"(?:{label_pattern})\s*(?:[:：]\s*(.*?))?\s*$",
+            candidate,
+            flags=re.I,
+        )
         if not match:
             continue
-        inline = _normalize_lottery_identity_value(match.group(1))
+        inline = _normalize_lottery_identity_value(match.group(1) or "")
         if inline:
             return [inline]
 
@@ -356,7 +372,11 @@ def _extract_lottery_section_values(raw: str, labels: tuple[str, ...]) -> list[s
             if not stripped:
                 continue
             next_candidate = re.sub(r"^[^\w\u3400-\u9fff]+", "", stripped)
-            if re.match(rf"(?:{section_pattern})\s*[:：]", next_candidate, flags=re.I):
+            if re.match(
+                rf"(?:{section_pattern})\s*(?:[:：]|$)",
+                next_candidate,
+                flags=re.I,
+            ):
                 break
             if re.fullmatch(r"[━─—=\-]+", stripped) or "祝所有参与者好运" in stripped:
                 break
