@@ -9,7 +9,6 @@ DEFAULTS = {
     "dedup_long_term_minutes": "10080",
     "dedup_other_minutes": "20",
     "dedup_lottery_template_mode": "global",
-    "dedup_lottery_key_mode": "id",
 }
 
 STATS_HASH_KEYS = (

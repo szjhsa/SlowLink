@@ -861,6 +861,10 @@ def refresh_dialogs():
     gate = require_login()
     if gate:
         return gate
+    old_dialogs = []
+    old_entity_cache = {}
+    old_entity_index = {}
+    old_entity_refreshed_ts = 0.0
     try:
         old_dialogs = get_json("dialog_cache", []) or []
         old_entity_cache = dict(getattr(manager, "entity_cache", {}) or {})
@@ -1106,8 +1110,8 @@ def add_code_rule_route():
     name = request.form.get("name", "").strip() or "自定义码规则"
     pattern = request.form.get("pattern", "").strip()
     group = request.form.get("group", "0").strip() or "0"
-    fast = request.form.get("fast") == "1"
-    trigger = request.form.get("trigger") == "1"
+    fast = request.form.get("fast", "1") == "1"
+    trigger = request.form.get("trigger", "0") == "1"
     strict_context = request.form.get("strict_context") == "1"
     if not pattern:
         return done("码识别正则不能为空", "error", ok=False)
@@ -1132,8 +1136,6 @@ def update_code_rule_route():
             "pattern": request.form.get("pattern", "").strip(),
             "group": request.form.get("group", "0").strip() or "0",
             "enabled": request.form.get("enabled") == "1",
-            "fast": request.form.get("fast") == "1",
-            "trigger": request.form.get("trigger") == "1",
             "strict_context": request.form.get("strict_context") == "1",
             "note": request.form.get("note", "").strip(),
         }

@@ -59,6 +59,30 @@ class SafeAuditFixesV13927Tests(unittest.TestCase):
         self.assertIn("_regex.compile(part, _regex.I | _regex.M)", web)
         self.assertIn("migrate_known_regex_rules()", web)
         self.assertIn("只导入正则规则", template)
+        self.assertNotIn('name="fast"', template)
+        self.assertNotIn('name="trigger"', template)
+        self.assertIn("仅辅助去重", template)
+        self.assertIn("转发仍需要用户正则命中", read(APP / "plugins" / "builtin" / "rules.json"))
+
+    def test_refresh_dialog_defaults_exist_before_try(self):
+        web = read(APP / "web.py")
+        marker = web.index("def refresh_dialogs():")
+        body_start = web.index("\n", marker)
+        try_start = web.index("    try:", body_start)
+        before_try = web[body_start:try_start]
+
+        self.assertIn("old_entity_cache = {}", before_try)
+        self.assertIn("old_entity_index = {}", before_try)
+
+    def test_failed_queue_retry_requeues_on_timeout_and_cancel(self):
+        runner = read(APP / "bot_runner.py")
+        start = runner.index("async def _retry_failed_queue")
+        end = runner.index("    def _trim_caches", start)
+        retry_body = runner[start:end]
+
+        self.assertIn("queue_on_failure=False", retry_body)
+        self.assertIn("self._requeue_failed_raw(raw)", retry_body)
+        self.assertGreaterEqual(retry_body.count("self._requeue_failed_raw(raw)"), 3)
 
     def test_bot_and_redis_safe_fixes_are_present(self):
         runner = read(APP / "bot_runner.py")

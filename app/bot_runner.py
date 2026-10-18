@@ -1483,6 +1483,7 @@ class BotManager:
         text: str,
         max_retries: int = 3,
         delivery_key: str = "",
+        queue_on_failure: bool = True,
     ):
         last_error = None
         refreshed = False
@@ -1504,21 +1505,22 @@ class BotManager:
                         continue
                 elif sec <= 300:
                     await asyncio.sleep(min(sec, 120))
-                # Queue for later recovery instead of losing the message
-                try:
-                    failed_item = {
-                        "text": text,
-                        "target": target,
-                        "ts": int(time.time()),
-                        "reason": f"FloodWait {sec}s",
-                    }
-                    if delivery_key:
-                        failed_item["delivery_key"] = delivery_key
-                    r.lpush("failed_queue", _json.dumps(failed_item, ensure_ascii=False))
-                    r.ltrim("failed_queue", 0, 99)
-                except Exception as qe:
-                    add_fail({"stage": "failed_queue", "error": f"FloodWait 消息入队失败：{qe}"})
-                    push_event("error", f"失败消息入队失败：{qe}")
+                if queue_on_failure:
+                    # Queue for later recovery instead of losing the message.
+                    try:
+                        failed_item = {
+                            "text": text,
+                            "target": target,
+                            "ts": int(time.time()),
+                            "reason": f"FloodWait {sec}s",
+                        }
+                        if delivery_key:
+                            failed_item["delivery_key"] = delivery_key
+                        r.lpush("failed_queue", _json.dumps(failed_item, ensure_ascii=False))
+                        r.ltrim("failed_queue", 0, 99)
+                    except Exception as qe:
+                        add_fail({"stage": "failed_queue", "error": f"FloodWait 消息入队失败：{qe}"})
+                        push_event("error", f"失败消息入队失败：{qe}")
                 raise
             except Exception as e:
                 last_error = e
@@ -1529,29 +1531,37 @@ class BotManager:
                         self._target_entity_cache.pop(cache_key, None)
                     except Exception:
                         pass
-        # All retries exhausted - write to failed queue for background recovery
-        try:
-            failed_item = {
-                "text": text,
-                "target": target,
-                "ts": int(time.time()),
-            }
-            if delivery_key:
-                failed_item["delivery_key"] = delivery_key
-            r.lpush("failed_queue", _json.dumps(failed_item, ensure_ascii=False))
-            r.ltrim("failed_queue", 0, 99)
-        except Exception as qe:
-            add_fail({"stage": "failed_queue", "error": f"重试消息入队失败：{qe}"})
-            push_event("error", f"失败消息入队失败：{qe}")
+        if queue_on_failure:
+            # All retries exhausted - write to failed queue for background recovery.
+            try:
+                failed_item = {
+                    "text": text,
+                    "target": target,
+                    "ts": int(time.time()),
+                }
+                if delivery_key:
+                    failed_item["delivery_key"] = delivery_key
+                r.lpush("failed_queue", _json.dumps(failed_item, ensure_ascii=False))
+                r.ltrim("failed_queue", 0, 99)
+            except Exception as qe:
+                add_fail({"stage": "failed_queue", "error": f"重试消息入队失败：{qe}"})
+                push_event("error", f"失败消息入队失败：{qe}")
         raise last_error or RuntimeError("send failed after retries")
+
+    def _requeue_failed_raw(self, raw: str) -> None:
+        if not raw:
+            return
+        try:
+            r.rpush("failed_queue", raw)
+        except Exception as e:
+            add_fail({"stage": "failed_queue", "error": f"失败任务回队失败：{e}"})
+            push_event("error", f"失败任务回队失败：{e}")
 
     async def _retry_failed_queue(self, client: TelegramClient):
         while not self.stop_event.is_set():
+            raw = ""
             try:
                 await self._wait_for_reconnect()
-                # Atomic pop + send: _send_with_retry already re-queues on failure
-                # (FloodWait handler does r.lpush). Do NOT push back here
-                # to avoid double-queue (same message forwarded twice).
                 raw = r.rpop("failed_queue")
                 if raw:
                     item = _json.loads(raw)
@@ -1566,6 +1576,7 @@ class BotManager:
                         state = read_target_state(r, delivery_key, target)
                         if str(state.get("status") or "") != "sent":
                             r.rpush("failed_queue", raw)
+                        raw = ""
                         await asyncio.sleep(30)
                         continue
                     self._active_jobs += 1
@@ -1584,6 +1595,7 @@ class BotManager:
                             text,
                             2,
                             delivery_key=delivery_key,
+                            queue_on_failure=False,
                         )
                         if JOB_MAX_PROCESSING_SECONDS > 0:
                             await asyncio.wait_for(
@@ -1600,6 +1612,7 @@ class BotManager:
                                 "sent",
                             )
                         self._mark_business_progress()
+                        raw = ""
                     except asyncio.TimeoutError:
                         reason = (
                             "失败队列重试超过 "
@@ -1614,6 +1627,8 @@ class BotManager:
                                 target,
                                 "failed",
                             )
+                        self._requeue_failed_raw(raw)
+                        raw = ""
                     except Exception:
                         if delivery_key:
                             mark_target_state(
@@ -1622,12 +1637,15 @@ class BotManager:
                                 target,
                                 "failed",
                             )
+                        self._requeue_failed_raw(raw)
+                        raw = ""
                     finally:
                         self._active_jobs = max(0, self._active_jobs - 1)
             except asyncio.CancelledError:
-                break
+                self._requeue_failed_raw(raw)
+                raise
             except Exception:
-                pass
+                self._requeue_failed_raw(raw)
             await asyncio.sleep(30)
 
     def _trim_caches(self):

@@ -59,7 +59,7 @@
         "fast": true,
         "trigger": false,
         "strict_context": false,
-        "note": "支持多段项目名以及中文提示、@、.、#、% 等猜码内容；完整强格式可直接触发"
+        "note": "支持多段项目名以及中文提示、@、.、#、% 等猜码内容；仅辅助去重，需用户正则命中"
       },
       {
         "name": "通用连字符邀请码",
@@ -313,12 +313,12 @@
   },
   "ui": {
     "code_tab_title": "码识别",
-    "code_mode_active": "插件自动识别",
+    "code_mode_active": "插件辅助识别",
     "code_mode_pure": "纯净自定义",
-  "code_active_hint": "插件会识别 Register / Renew、Whitelist、网页 invite 等完整码并直接触发；主系统只负责转发和通用去重。",
+    "code_active_hint": "插件只辅助识别和否决；转发仍需要用户正则命中。",
     "code_pure_hint": "纯净模式只使用你添加的码规则。",
     "code_advanced_hint_active": "用于添加特殊码格式。",
-    "code_advanced_hint_pure": "添加你的码识别格式；勾选“允许单独触发”后可直接转发。",
+    "code_advanced_hint_pure": "添加你的码识别格式；转发仍需要用户正则命中。",
     "code_name_placeholder": "规则名称，例如 VIP 邀请码",
     "code_pattern_placeholder": "识别正则，例如 VIP-[A-Za-z0-9-]+",
     "code_strict_label": "检查注册/邀请上下文",
@@ -345,17 +345,6 @@
           {"value": "global", "label": "全局：所有抽奖模板统一去重（默认）"},
           {"value": "id", "label": "仅 ID / 种子：只有明确抽奖标识才去重"},
           {"value": "off", "label": "关闭跨模板：只按原文本去重"}
-        ]
-      },
-      {
-        "key": "dedup_lottery_key_mode",
-        "label": "抽奖键模式",
-        "default": "id",
-        "hidden": true,
-        "options": [
-          {"value": "id", "label": "抽奖 ID"},
-          {"value": "id_keyword", "label": "抽奖 ID + 关键词"},
-          {"value": "id_prize_keyword", "label": "抽奖 ID + 奖品 + 关键词"}
         ]
       }
     ],
@@ -402,7 +391,6 @@
     "dedup_code_minutes": "20",
     "dedup_mode": "strict",
     "display_timezone": "Asia/Shanghai",
-    "dedup_similarity_enabled": "0",
     "dedup_lottery_template_mode": "global"
   }
 }

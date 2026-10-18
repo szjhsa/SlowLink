@@ -635,7 +635,6 @@ def ensure_defaults() -> None:
         "display_timezone": "Asia/Shanghai",
         "bot_status": "stopped",
         "listener_desired_state": "stopped",
-        "dedup_similarity_enabled": "0",
         "worker_count": str(LISTENER_WORKERS),
     }
     defaults.update(PLUGIN_DEFAULTS)

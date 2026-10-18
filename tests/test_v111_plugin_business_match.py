@@ -41,7 +41,7 @@ def make_fake_store():
     return fake_store
 
 
-def plugin_match(text):
+def plugin_match(text, format_gates=None):
     fake_store = make_fake_store()
     old_store = sys.modules.get("redis_store")
     sys.modules["redis_store"] = fake_store
@@ -49,11 +49,10 @@ def plugin_match(text):
     try:
         from plugin_runtime import call_hook
 
-        return call_hook(
-            "match_plugin_event",
-            {"text": text, "normalized": text, "compact": text},
-            default=None,
-        )
+        payload = {"text": text, "normalized": text, "compact": text}
+        if format_gates is not None:
+            payload["format_gates"] = format_gates
+        return call_hook("match_plugin_event", payload, default=None)
     finally:
         try:
             sys.path.remove(str(APP))
@@ -273,6 +272,27 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
 
         self.assertFalse(result["matched"])
         self.assertEqual(result["rule"], "")
+
+    def test_format_gate_uses_inferred_rule_type_without_policy(self):
+        gates = json.loads(
+            (APP / "plugins" / "builtin" / "rules.json").read_text(
+                encoding="utf-8-sig"
+            )
+        )["format_gates"]
+
+        incomplete = plugin_match("抽奖信息", format_gates=gates)
+        valid = plugin_match(
+            "🎁 抽奖活动已开始！\n🎁 奖品内容：公益服注册码 x1",
+            format_gates=gates,
+        )
+
+        self.assertIsInstance(incomplete, dict)
+        self.assertFalse(incomplete.get("matched"))
+        self.assertTrue(incomplete.get("suppressed"))
+        self.assertEqual(incomplete.get("reason"), "format_min_hits:lottery_structured")
+        self.assertIsInstance(valid, dict)
+        self.assertTrue(valid.get("matched"))
+        self.assertEqual(valid.get("rule_type"), "lottery")
 
     def test_plugin_suppression_blocks_matching_user_regex(self):
         rule = "抽奖"

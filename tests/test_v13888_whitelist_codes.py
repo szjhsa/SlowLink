@@ -138,7 +138,7 @@ class WhitelistCodeV13888Tests(unittest.TestCase):
             encoding="utf-8-sig"
         )
 
-        self.assertIn("插件会识别 Register / Renew、Whitelist", source)
+        self.assertIn("插件只辅助识别和否决", source)
 
     def test_version_sources_are_consistent(self):
         version = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()

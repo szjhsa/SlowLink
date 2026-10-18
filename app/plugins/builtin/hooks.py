@@ -830,7 +830,7 @@ def match_plugin_event(payload):
                     str(rule.get("format_gate") or ""),
                     (original, normalized, compact),
                     payload.get("format_gates"),
-                    rule_type,
+                    rule_type or str(rule.get("rule_type") or ""),
                 )
                 if not format_ok:
                     suppressed = True

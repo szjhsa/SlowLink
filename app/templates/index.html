@@ -241,7 +241,7 @@
         <details class="simple-advanced code-advanced">
           <summary>高级：自定义码规则</summary>
           <div class="simple-advanced-body">
-            <p class="hint">{% if active_plugin %}{{ ui.get('code_advanced_hint_active', '用于添加特殊识别格式。') }}{% else %}{{ ui.get('code_advanced_hint_pure', '添加你的识别格式；勾选“允许单独触发”后可直接转发。') }}{% endif %}</p>
+            <p class="hint">{% if active_plugin %}{{ ui.get('code_advanced_hint_active', '用于添加特殊识别格式。') }}{% else %}{{ ui.get('code_advanced_hint_pure', '添加你的识别格式；转发仍需要用户正则命中。') }}{% endif %}</p>
             <form action="/add_code_rule" method="post" class="code-rule-form" data-ajax="1">
               <div class="code-rule-input-grid">
                 <input name="name" placeholder="{{ ui.get('code_name_placeholder', '规则名称') }}">
@@ -249,9 +249,7 @@
                 <input name="group" value="0" placeholder="提取组，默认 0">
               </div>
               <div class="code-rule-option-grid">
-                <label class="inline-check"><input type="checkbox" name="fast" value="1" checked> 极速通道</label>
                 <label class="inline-check"><input type="checkbox" name="strict_context" value="1" checked> {{ ui.get('code_strict_label', '检查识别上下文') }}</label>
-                <label class="inline-check danger-inline"><input type="checkbox" name="trigger" value="1"> 允许这条码规则单独触发转发</label>
               </div>
               <button>添加码规则</button>
             </form>
@@ -733,16 +731,14 @@ function renderCodeRules(items){
   box.innerHTML = items.map((r, idx) => {
     const index = esc(r.index ?? idx);
     return `<details class="code-rule-card" ${r.ok===false?'open':''}>
-      <summary><span><b>${esc(r.name||'未命名')}</b> ${r.ok===false?'<span class="state-tag excluded">异常</span>':'<span class="state-tag listening">启用</span>'} ${r.trigger?'<span class="state-tag excluded">可触发</span>':'<span class="tag">仅辅助</span>'}</span><small>${esc(r.safe_reason||r.note||'')}</small></summary>
+      <summary><span><b>${esc(r.name||'未命名')}</b> ${r.ok===false?'<span class="state-tag excluded">异常</span>':'<span class="state-tag listening">启用</span>'} <span class="tag">仅辅助去重</span></span><small>${esc(r.safe_reason||r.note||'')}</small></summary>
       <form action="/update_code_rule" method="post" data-ajax="1" class="code-rule-edit">
         <input type="hidden" name="index" value="${index}">
         <label>名称<input name="name" value="${esc(r.name||'')}"></label>
         <label>识别正则<input name="pattern" value="${esc(r.pattern||'')}"></label>
         <label>提取组<input name="group" value="${esc(r.group ?? '0')}"></label>
         <label class="inline-check"><input type="checkbox" name="enabled" value="1" ${r.enabled!==false?'checked':''}> 启用</label>
-        <label class="inline-check"><input type="checkbox" name="fast" value="1" ${r.fast?'checked':''}> 极速通道</label>
         <label class="inline-check"><input type="checkbox" name="strict_context" value="1" ${r.strict_context?'checked':''}> 检查注册/邀请上下文</label>
-        <label class="inline-check danger-inline"><input type="checkbox" name="trigger" value="1" ${r.trigger?'checked':''}> 允许单独触发转发</label>
         <label class="code-note">备注<input name="note" value="${esc(r.note||'')}"></label>
         ${r.error?'<div class="error-text">错误：'+esc(r.error)+'</div>':''}
         <div class="button-row"><button class="small">保存这条</button><button type="submit" formaction="/del_code_rule" class="danger small">删除</button></div>

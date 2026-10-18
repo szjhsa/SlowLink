@@ -68,10 +68,10 @@ class SafetyFixesV13912Tests(unittest.TestCase):
         self.assertFalse(result["matched"])
         self.assertLess(elapsed_ms, 1000)
 
-    def test_normal_user_regex_still_matches_after_timeout_change(self):
+    def test_structured_user_regex_still_matches_after_timeout_change(self):
         rule = "🍀 祝所有参与者好运！"
         matcher = load_matcher(regex_rules={rule})
-        text = "🍀 祝所有参与者好运！"
+        text = "🎁 抽奖活动已开始！\n🍀 祝所有参与者好运！"
 
         result = matcher.match_rule_details(text)
 
