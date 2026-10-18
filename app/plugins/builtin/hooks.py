@@ -452,6 +452,23 @@ def _lottery_expired(payload: dict, now: datetime | None = None) -> bool:
     return max(event_times) + timedelta(minutes=grace_minutes) < current
 
 
+def _looks_like_lottery_text(payload: dict) -> bool:
+    rule_policy = payload.get("rule_policy")
+    if isinstance(rule_policy, dict) and str(rule_policy.get("rule_type") or "") == "lottery":
+        return True
+    text = str(payload.get("text") or "")
+    return any(
+        marker in text
+        for marker in (
+            *LOTTERY_MARKERS,
+            "抽奖",
+            "开奖",
+            "中奖",
+            "奖品",
+        )
+    )
+
+
 def _usage_notice(payload: dict, normalized: str, compact: str) -> bool:
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
     code_line_re = _compile_pattern(config.get("code_line_pattern"), re.I)
@@ -713,7 +730,7 @@ def match_plugin_event(payload):
         if isinstance(rule_policy, dict)
         else ""
     )
-    if any(
+    if _looks_like_lottery_text(payload) and any(
         LOTTERY_RESULT_RE.search(candidate)
         for candidate in (original, normalized, compact)
     ):
@@ -721,12 +738,6 @@ def match_plugin_event(payload):
             "matched": False,
             "suppressed": True,
             "reason": "lottery_result",
-        }
-    if _lottery_expired(payload):
-        return {
-            "matched": False,
-            "suppressed": True,
-            "reason": "lottery_expired",
         }
 
     def _code_detail():
@@ -824,6 +835,14 @@ def match_plugin_event(payload):
                 if not format_ok:
                     suppressed = True
                     suppressed_reason = format_reason
+                    continue
+                if (
+                    str(rule.get("rule_type") or "").strip().lower()
+                    == "lottery"
+                    and _lottery_expired(payload)
+                ):
+                    suppressed = True
+                    suppressed_reason = "lottery_expired"
                     continue
                 return {
                     "matched": True,

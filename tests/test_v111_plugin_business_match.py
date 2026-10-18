@@ -202,6 +202,20 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
         self.assertTrue(result.get("matched"))
         self.assertEqual(result.get("rule_type"), "lottery")
 
+    def test_registration_with_past_deadline_is_not_lottery_expired(self):
+        text = (
+            "🫧 管理员 已开启 自由注册\n"
+            "🎫 总注册限制 | 500\n"
+            "🎟️ 已注册人数 | 383\n"
+            "⏰ 截止时间：2020-01-01 12:00"
+        )
+
+        result = plugin_match(text)
+
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result.get("matched"))
+        self.assertEqual(result.get("rule_type"), "keyword")
+
     def test_code_format_rules_require_safe_code_context(self):
         for text in (
             "登录 CKWIS3PD97M3F6",
