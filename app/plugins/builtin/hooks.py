@@ -31,6 +31,7 @@ BUSINESS_MATCH_RULES = [
     {"name": "祝参与者好运", "rule_type": "lottery", "guard_topic": "lottery", "format_gate": "lottery_structured", "pattern": r"🍀 祝所有参与者好运！"},
     {"name": "新抽奖创建", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"新的抽奖已经创建[ \t\r\n\u200b\u200c\u200d\ufeff]*抽奖信息"},
     {"name": "抽奖活动标记", "rule_type": "lottery", "guard_topic": "lottery", "pattern": r"🎉 抽奖活动已开始!"},
+    {"name": "结构化抽奖事件", "rule_type": "lottery", "guard_topic": "lottery", "format_gate": "lottery_structural", "pattern": r"(?m)^[^\n]*(?:开奖时间|开奖日期|截止时间|奖品(?:内容)?|参与条件|参与要求|参与方式|参与关键词|抽奖条件|口令)[^\n]*$"},
     {"name": "生成码提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"已为您生成了"},
     {"name": "新兑换码提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"新的兑换码已生成"},
     {"name": "生成提示", "rule_type": "code", "requires_code": True, "reject_in_instruction": True, "pattern": r"🎁 已生成"},
@@ -835,7 +836,8 @@ def match_plugin_event(payload):
                 )
                 if not format_ok:
                     suppressed = True
-                    suppressed_reason = format_reason
+                    if suppressed_reason != "lottery_expired":
+                        suppressed_reason = format_reason
                     continue
                 if (
                     str(rule.get("rule_type") or "").strip().lower()

@@ -221,6 +221,31 @@ class PluginBusinessMatchV111Tests(unittest.TestCase):
         self.assertTrue(result.get("matched"))
         self.assertEqual(result.get("rule_type"), "lottery")
 
+    def test_structural_lottery_with_changed_heading_matches(self):
+        gates = json.loads(
+            (APP / "plugins" / "builtin" / "rules.json").read_text(
+                encoding="utf-8-sig"
+            )
+        )["format_gates"]
+        text = (
+            "🎉 谷雨 X OWN Ⅹ Amazing 上门送温暖\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "截止时间：\n"
+            "2099年11月14日 20:59:59 UTC+8\n\n"
+            "🎁 奖品\n"
+            "· OWN Ultra 体验卡 x10\n\n"
+            "参与要求\n"
+            "· 订阅 OWN | 官方交流群\n\n"
+            "🔑 口令：换了一个新口令"
+        )
+
+        result = plugin_match(text, format_gates=gates)
+
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result.get("matched"))
+        self.assertEqual(result.get("rule_type"), "lottery")
+        self.assertEqual(result.get("rule"), "plugin:结构化抽奖事件")
+
     def test_registration_with_past_deadline_is_not_lottery_expired(self):
         text = (
             "🫧 管理员 已开启 自由注册\n"
